@@ -23,22 +23,23 @@ Y,X = 0,1
 Ds = 0.9 #micrometers/pixel
 image_size = [32, 128] #pixels
 field_size = [Ds*i for i in image_size] #micrometers
-Ts_world = 1. * 10.**-3 #s/sample
-Ts_microscope_pixels = 10.31*10.**-6. #s/pixel
+Ts_world = 1.e-3 #s/sample
+Ts_microscope_pixels = 10.31e-6 #s/pixel
 Ts_microscope = Ts_microscope_pixels * np.product(image_size) #s/sample
 
 # the biological tissue
 soma_radius = [3., 0.3] #micrometers
 soma_circularity_noise_world = [0., 2.] #micrometers
 soma_circularity_noise = [ss/Ds for ss in soma_circularity_noise_world] #pixels
-soma_density_field = 8#cells per frame area
+soma_density_field = 8 #cells per frame area
 soma_density = soma_density_field / np.product(field_size) #cells/micrometer_squared
 ca_rest = 0.050 #micromolar
 neuropil_density = 1.0 #neuropil probability at any given point
 
 # the imaging equipment
 imaging_background = 0.1
-imaging_noise = [0., 0.08] #when movie is 0-1.0
+imaging_noise_lam = 3.0
+imaging_noise_mag = 0.3 #when movie is 0-1.0
 
 # indicator
 tau_gcamp_rise = 0.084 #s (58ms t1/2 rise dvidied by ln2)
@@ -80,7 +81,7 @@ def generate_stim(t, shift):
     #assumes t has constant sampling rate
     onsets = [(stim_onset+stim_dur+stim_gap)*i + stim_onset for i in xrange(stim_n)]
     onsets = [o + abs(shift) for o in onsets]
-
+     
     stim = np.zeros_like(t)
     idxs_start = [np.argmin(np.abs(onset-t)) for onset in onsets]
     idxs_end = [np.argmin(np.abs((onset+stim_dur)-t)) for onset in onsets]
@@ -214,7 +215,7 @@ def save_data(fname, cells,neuropil,stim,t):
     data['cells'] = [cell.__dict__ for cell in cells]
     data['neuropil'] = neuropil.__dict__
     data['stim'] = stim
-    pnames = ['Ds','image_size','field_size','duration','Ts_world','Ts_microscope_pixels', 'Ts_microscope', 'soma_radius', 'soma_circularity_noise_world', 'soma_circularity_noise', 'soma_density_field', 'soma_density', 'ca_rest', 'neuropil_density', 'imaging_background', 'imaging_noise', 'tau_gcamp_rise', 'tau_gcamp_decay', 'gcamp_kd', 'gcamp_nh', 'tau_ca_decay', 'ca_per_ap', 'stim_onset', 'stim_f', 'stim_dur', 'stim_gap', 'stim_n', 'cell_timing_offset', 'cell_magnitude', 'cell_baseline', 'cell_expression', 'cell_fluo_baseline', 'neuropil_mag', 'neuropil_baseline', 'incell_ca_dist_noise', 'npil_ca_dist_noise']
+    pnames = ['Ds','image_size','field_size','duration','Ts_world','Ts_microscope_pixels', 'Ts_microscope', 'soma_radius', 'soma_circularity_noise_world', 'soma_circularity_noise', 'soma_density_field', 'soma_density', 'ca_rest', 'neuropil_density', 'imaging_background', 'imaging_noise_lam', 'imaging_noise_mag', 'tau_gcamp_rise', 'tau_gcamp_decay', 'gcamp_kd', 'gcamp_nh', 'tau_ca_decay', 'ca_per_ap', 'stim_onset', 'stim_f', 'stim_dur', 'stim_gap', 'stim_n', 'cell_timing_offset', 'cell_magnitude', 'cell_baseline', 'cell_expression', 'cell_fluo_baseline', 'neuropil_mag', 'neuropil_baseline', 'incell_ca_dist_noise', 'npil_ca_dist_noise']
     data['params'] = {i:eval(i) for i in pnames}
     data['time'] = t
 
@@ -244,7 +245,8 @@ def generate_movie():
     seq = normalize(seq)
     samp_int = np.rint(Ts_microscope / Ts_world)
     mov = seq[0:len(seq):samp_int, :, :]
-    noise = rand.normal(*imaging_noise, size=mov.shape)
+    noise = rand.poisson(imaging_noise_lam, size=mov.shape)
+    noise = imaging_noise_mag * noise/np.max(noise)
     mov = mov + noise
     mov = np.rint(normalize(mov)*255.).astype(np.uint8)
     return mov,cells,neuropil,stim,t
@@ -257,5 +259,5 @@ if __name__ == '__main__':
         fname = fname_glob + '_' + str(i)
         fname = os.path.join(fname_glob, fname)
         mov,cells,neuropil,stim,t = generate_movie()
-        save_mov(mov, fname, fmt='tif')
+        save_mov(mov, fname, fmt='avi')
         save_data(fname, cells,neuropil,stim,t)
