@@ -170,12 +170,14 @@ def construct(seq, cells, npil):
         m = np.mean(cell.fluo)
         noise = rand.normal(m, incell_ca_dist_noise[1]*m, size=cell_fluo.shape[1])
         cell_fluo = cell_fluo+noise
+        cell.fluo_with_noise = cell_fluo
         seq[:, cell.mask] += cell_fluo
 
     npil_fluo = np.array([npil.fluo]*np.sum(npil.mask)).transpose()
     m = np.mean(npil.fluo)
     noise = rand.normal(m, npil_ca_dist_noise[1]*m, size=npil_fluo.shape[1])
     npil_fluo += noise
+    npil.fluo_with_noise = npil_fluo
     seq[:, npil.mask] += npil_fluo #add neuropil
     
     return seq
