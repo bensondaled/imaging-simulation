@@ -37,7 +37,7 @@ soma_radius = [3., 0.2] #micrometers
 soma_circularity_noise_world = [0., 0.15] #micrometers
 soma_circularity_noise = [ss/Ds for ss in soma_circularity_noise_world] #pixels
 nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
-soma_density_field = 100 #cells per frame area
+soma_density_field = 80 #cells per frame area
 soma_density = soma_density_field / np.product(field_size) #cells/micrometer_squared
 ca_rest = 0.050 #micromolar
 neuropil_density = 0.8 #neuropil probability at any given point
@@ -45,7 +45,7 @@ neuropil_density = 0.8 #neuropil probability at any given point
 # the imaging equipment
 imaging_background = 0.1
 imaging_noise_lam = 3.0
-imaging_noise_mag = 1.0 #when movie is 0-1.0
+imaging_noise_mag = 1.5 #when movie is 0-1.0
 imaging_filter_sigma = [0., 0.2, 0.2]
 
 # indicator
@@ -167,6 +167,10 @@ class Cell(object):
         pos_array = np.rint(pos_array)
         self.mask = pos_array <= r*r
         self.mask[pos_array <= nr*nr] = False
+        
+        idx0 = [np.floor(j/2.) for j in jitter_pad] 
+        idx1 = [isz-np.ceil(j/2.) for isz,j in zip(image_size,jitter_pad)]
+        self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]]
 def generate_cells():
     n_cells = np.rint(soma_density * np.product(field_size))
     cells = []
@@ -267,6 +271,8 @@ def image(seq,t):
     noise = rand.poisson(imaging_noise_lam, size=mov.shape)
     noise = imaging_noise_mag * noise/np.max(noise)
     mov = mov + noise
+
+
     return mov,t_im
 
 def generate_movie():
