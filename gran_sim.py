@@ -34,13 +34,8 @@ Ts_microscope_pixels = 1.5625e-5 #s/pixel
 Ts_microscope = Ts_microscope_pixels * np.product(image_size) #s/frame
 
 # the biological tissue
-<<<<<<< HEAD
 soma_radius = [2., 0.2] #micrometers
-soma_circularity_noise_world = [0., 0.3] #micrometers
-=======
-soma_radius = [2.75, 0.25] #micrometers
-soma_circularity_noise_world = [0., 2.] #micrometers
->>>>>>> 2c0a78331f0dfe9c43e720be5a674419014cffa3
+soma_circularity_noise_world = [0., 0.15] #micrometers
 soma_circularity_noise = [ss/Ds for ss in soma_circularity_noise_world] #pixels
 nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
 soma_density_field = 100 #cells per frame area
