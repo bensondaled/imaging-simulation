@@ -23,18 +23,17 @@ MEAN,STD = 0,1
 Y,X = 0,1
 
 # time and space
-Ds = 0.9 #micrometers/pixel
+Ds = 1.1 #micrometers/pixel
 image_size_final = [32, 128] #pixels
 jitter_pad = [20, 20] #pixels
 jitter_lambda = 1.0 #poisson
 image_size = [i+j for i,j in zip(image_size_final, jitter_pad)]
 field_size = [Ds*i for i in image_size] #micrometers
 Ts_world = 0.02 #s/sample
-Ts_microscope_pixels = 1.5625e-5 #s/pixel
-Ts_microscope = Ts_microscope_pixels * np.product(image_size) #s/frame
+Ts_microscope = 0.064 #s/frame
 
 # the biological tissue
-soma_radius = [2., 0.2] #micrometers
+soma_radius = [3., 0.2] #micrometers
 soma_circularity_noise_world = [0., 0.15] #micrometers
 soma_circularity_noise = [ss/Ds for ss in soma_circularity_noise_world] #pixels
 nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
@@ -239,20 +238,22 @@ def save_mov(mov, fname, fmt='avi'):
         except:
             raise Exception('No working module for tiff saving.')
 
-def save_data(fname, cells,neuropil,stim,t):
+def save_data(fname, cells,neuropil,stim,t,t_im):
     data = {}
     data['cells'] = [cell.__dict__ for cell in cells]
     data['neuropil'] = neuropil.__dict__
     data['stim'] = stim
-    pnames = ['Ds','image_size','image_size_final','jitter_pad','jitter_lambda','field_size','duration','Ts_world','Ts_microscope_pixels', 'Ts_microscope', 'soma_radius', 'soma_circularity_noise_world', 'soma_circularity_noise', 'nucleus_radius', 'soma_density_field', 'soma_density', 'ca_rest', 'neuropil_density', 'imaging_background', 'imaging_noise_lam', 'imaging_noise_mag', 'imaging_filter_sigma', 'tau_gcamp_rise', 'tau_gcamp_decay', 'gcamp_kd', 'gcamp_nh', 'tau_ca_decay', 'ca_per_ap', 'stim_onset', 'stim_f', 'stim_dur', 'stim_gap', 'stim_n', 'cell_timing_offset', 'cell_magnitude', 'cell_baseline', 'cell_expression', 'cell_fluo_baseline', 'neuropil_mag', 'neuropil_baseline', 'incell_ca_dist_noise', 'npil_ca_dist_noise']
+    pnames = ['Ds','image_size','image_size_final','jitter_pad','jitter_lambda','field_size','duration','Ts_world', 'Ts_microscope', 'soma_radius', 'soma_circularity_noise_world', 'soma_circularity_noise', 'nucleus_radius', 'soma_density_field', 'soma_density', 'ca_rest', 'neuropil_density', 'imaging_background', 'imaging_noise_lam', 'imaging_noise_mag', 'imaging_filter_sigma', 'tau_gcamp_rise', 'tau_gcamp_decay', 'gcamp_kd', 'gcamp_nh', 'tau_ca_decay', 'ca_per_ap', 'stim_onset', 'stim_f', 'stim_dur', 'stim_gap', 'stim_n', 'cell_timing_offset', 'cell_magnitude', 'cell_baseline', 'cell_expression', 'cell_fluo_baseline', 'neuropil_mag', 'neuropil_baseline', 'incell_ca_dist_noise', 'npil_ca_dist_noise']
     data['params'] = {i:eval(i) for i in pnames}
     data['time'] = t
+    data['time_imaged'] = t_im
 
     np.save(fname, np.array([data]))
     savemat(fname, data)
 
-def image(seq):
+def image(seq,t):
     samp_int = np.rint(Ts_microscope / Ts_world)
+    t_im = t[0:len(t):samp_int]
     mov_nojit = seq[0:len(seq):samp_int, :, :]
     idx0 = [np.floor(j/2.) for j in jitter_pad] 
     idx1 = [isz-np.ceil(j/2.) for isz,j in zip(image_size,jitter_pad)]
@@ -266,7 +267,7 @@ def image(seq):
     noise = rand.poisson(imaging_noise_lam, size=mov.shape)
     noise = imaging_noise_mag * noise/np.max(noise)
     mov = mov + noise
-    return mov
+    return mov,t_im
 
 def generate_movie():
     t = np.arange(0., duration, Ts_world)
@@ -290,9 +291,9 @@ def generate_movie():
     seq = construct(seq,cells,neuropil)
 
     seq = normalize(seq)
-    mov = image(seq)
+    mov,t_im = image(seq,t)
     mov = np.rint(normalize(mov)*255.).astype(np.uint8)
-    return mov,cells,neuropil,stim,t
+    return mov,cells,neuropil,stim,t,t_im
 
 if __name__ == '__main__':
     n = 1
@@ -301,7 +302,7 @@ if __name__ == '__main__':
     for i in xrange(n):
         fname = fname_glob + '_' + str(i)
         fname = os.path.join(fname_glob, fname)
-        mov,cells,neuropil,stim,t = generate_movie()
+        mov,cells,neuropil,stim,t,t_im = generate_movie()
         save_mov(mov, fname, fmt='tif')
         save_mov(mov, fname, fmt='avi')
-        save_data(fname, cells,neuropil,stim,t)
+        save_data(fname, cells,neuropil,stim,t,t_im)
