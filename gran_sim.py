@@ -1,8 +1,6 @@
 """
 Notes.
 
-currently messed with: tau_gcamp_rise, ca2f, marked with #TEMPORARY
-
 -rise time of gcamp is considered constant as of now
 -when the stochastic parameters are implemented, often abs() is used, meaning they are no longer truly gaussian
 """
@@ -29,8 +27,7 @@ jitter_pad = [20, 20] #pixels
 jitter_lambda = 1.0 #poisson
 image_size = [i+j for i,j in zip(image_size_final, jitter_pad)]
 field_size = [Ds*i for i in image_size] #micrometers
-Ts_microscope = 0.064 #s/frame
-Ts_world = Ts_microscope/2 #s/sample
+Ts = 0.064 #s/frame
 
 # the biological tissue
 soma_radius = [3., 0.2] #micrometers
@@ -49,7 +46,7 @@ imaging_noise_mag = 1.5 #when movie is 0-1.0
 imaging_filter_sigma = [0., 0.2, 0.2]
 
 # indicator
-tau_gcamp_rise = 0.0001 #0.084 #s (58ms t1/2 rise dvidied by ln2) #TEMPORARY
+tau_gcamp_rise = 0.084 #s (58ms t1/2 rise dvidied by ln2)
 tau_gcamp_decay = 0.102 #s (71ms t1/2 decay divided by ln2)
 gcamp_kd = 0.29 #micromolar
 gcamp_nh = 2.46 #hill coef
@@ -81,7 +78,6 @@ def ca2f(ca):
         return (c**gcamp_nh)/(gcamp_kd + c**gcamp_nh)
     #convert a calcium concentration to an ideal fluorescence maximal value
     f = response_curve(ca)
-    return ca #TEMPORARY
     return f
 
 def generate_stim(t, shift):
@@ -93,13 +89,13 @@ def generate_stim(t, shift):
     stim = np.zeros_like(t)
     idxs_start = [np.argmin(np.abs(onset-t)) for onset in onsets]
     idxs_end = [np.argmin(np.abs((onset+stim_dur)-t)) for onset in onsets]
-    if stim_f*Ts_world > 1.0: #more than one spike per sample
-        stim_f_use = 1/Ts_world
+    if stim_f*Ts > 1.0: #more than one spike per sample
+        stim_f_use = 1/Ts
         sps = stim_f/stim_f_use
     else:
         sps = 1.0
         stim_f_use = stim_f
-    idxs = np.concatenate([np.arange(idx_start, idx_end, np.rint(1./(stim_f_use*Ts_world)), dtype=int) for idx_start,idx_end in zip(idxs_start, idxs_end)])
+    idxs = np.concatenate([np.arange(idx_start, idx_end, np.rint(1./(stim_f_use*Ts)), dtype=int) for idx_start,idx_end in zip(idxs_start, idxs_end)])
     stim[idxs] = sps
     return stim
 
@@ -167,11 +163,14 @@ class Cell(object):
         pos_array += rand.normal(*soma_circularity_noise, size=pos_array.shape)
         pos_array = np.rint(pos_array)
         self.mask = pos_array <= r*r
+        self.mask_with_nucleus = np.copy(self.mask)
         self.mask[pos_array <= nr*nr] = False
         
         idx0 = [np.floor(j/2.) for j in jitter_pad] 
         idx1 = [isz-np.ceil(j/2.) for isz,j in zip(image_size,jitter_pad)]
         self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]]
+        self.mask_im_with_nucleus = self.mask_with_nucleus[idx0[0]:idx1[0], idx0[1]:idx1[1]]
+        self.was_in_fov = bool(np.sum(self.mask_im_with_nucleus))
 def generate_cells():
     n_cells = np.rint(soma_density * np.product(field_size))
     cells = []
@@ -201,14 +200,14 @@ def construct(seq, cells, npil):
         m = np.mean(cell.fluo)
         noise = rand.normal(m, incell_ca_dist_noise[1]*m, size=cell_fluo.shape[1])
         cell_fluo = cell_fluo+noise
-        cell.fluo_with_noise = cell_fluo
+        cell.fluo_by_pixel = cell_fluo
         seq[:, cell.mask] += cell_fluo
 
     npil_fluo = np.array([npil.fluo]*np.sum(npil.mask)).transpose()
     m = np.mean(npil.fluo)
     noise = rand.normal(m, npil_ca_dist_noise[1]*m, size=npil_fluo.shape[1])
     npil_fluo += noise
-    npil.fluo_with_noise = npil_fluo
+    npil.fluo_by_pixel = npil_fluo
     seq[:, npil.mask] += npil_fluo #add neuropil
     
     return seq
@@ -232,7 +231,7 @@ def normalize(seq):
 def save_mov(mov, fname, fmt='avi'):
     fname = fname + '.' + fmt
     if fmt=='avi':
-        vw = cv2.VideoWriter(fname, fourcc=cv2.cv.CV_FOURCC('m', 'p', '4', 'v'), fps=int(1./Ts_microscope), frameSize=tuple(image_size_final[::-1]))
+        vw = cv2.VideoWriter(fname, fourcc=cv2.cv.CV_FOURCC('m', 'p', '4', 'v'), fps=int(1./Ts), frameSize=tuple(image_size_final[::-1]))
         for fr in mov:
             vw.write(cv2.cvtColor(fr,cv2.cv.CV_GRAY2RGB))
         vw.release()
@@ -243,23 +242,20 @@ def save_mov(mov, fname, fmt='avi'):
         except:
             raise Exception('No working module for tiff saving.')
 
-def save_data(fname, cells,neuropil,stim,t,t_im):
+def save_data(fname, cells,neuropil,stim,t):
     data = {}
     data['cells'] = [cell.__dict__ for cell in cells]
     data['neuropil'] = neuropil.__dict__
     data['stim'] = stim
-    pnames = ['Ds','image_size','image_size_final','jitter_pad','jitter_lambda','field_size','duration','Ts_world', 'Ts_microscope', 'soma_radius', 'soma_circularity_noise_world', 'soma_circularity_noise', 'nucleus_radius', 'soma_density_field', 'soma_density', 'ca_rest', 'neuropil_density', 'imaging_background', 'imaging_noise_lam', 'imaging_noise_mag', 'imaging_filter_sigma', 'tau_gcamp_rise', 'tau_gcamp_decay', 'gcamp_kd', 'gcamp_nh', 'tau_ca_decay', 'ca_per_ap', 'stim_onset', 'stim_f', 'stim_dur', 'stim_gap', 'stim_n', 'cell_timing_offset', 'cell_magnitude', 'cell_baseline', 'cell_expression', 'cell_fluo_baseline', 'neuropil_mag', 'neuropil_baseline', 'incell_ca_dist_noise', 'npil_ca_dist_noise']
+    pnames = ['Ds','image_size','image_size_final','jitter_pad','jitter_lambda','field_size','duration', 'Ts', 'soma_radius', 'soma_circularity_noise_world', 'soma_circularity_noise', 'nucleus_radius', 'soma_density_field', 'soma_density', 'ca_rest', 'neuropil_density', 'imaging_background', 'imaging_noise_lam', 'imaging_noise_mag', 'imaging_filter_sigma', 'tau_gcamp_rise', 'tau_gcamp_decay', 'gcamp_kd', 'gcamp_nh', 'tau_ca_decay', 'ca_per_ap', 'stim_onset', 'stim_f', 'stim_dur', 'stim_gap', 'stim_n', 'cell_timing_offset', 'cell_magnitude', 'cell_baseline', 'cell_expression', 'cell_fluo_baseline', 'neuropil_mag', 'neuropil_baseline', 'incell_ca_dist_noise', 'npil_ca_dist_noise']
     data['params'] = {i:eval(i) for i in pnames}
     data['time'] = t
-    data['time_imaged'] = t_im
 
     np.save(fname, np.array([data]))
     savemat(fname, data)
 
-def image(seq,t):
-    samp_int = np.rint(Ts_microscope / Ts_world)
-    t_im = t[0:len(t):samp_int]
-    mov_nojit = seq[0:len(seq):samp_int, :, :]
+def image(seq,t,cells):
+    mov_nojit = seq
     idx0 = [np.floor(j/2.) for j in jitter_pad] 
     idx1 = [isz-np.ceil(j/2.) for isz,j in zip(image_size,jitter_pad)]
     mov = np.empty((len(mov_nojit),image_size_final[0],image_size_final[1]))
@@ -273,11 +269,14 @@ def image(seq,t):
     noise = imaging_noise_mag * noise/np.max(noise)
     mov = mov + noise
 
+    for cell in cells:
+        cell.fluo_with_noise = np.mean(mov[:,cell.mask_im],axis=1)
+        cell.fluo_with_noise_with_nucleus = np.mean(mov[:,cell.mask_im_with_nucleus],axis=1)
 
-    return mov,t_im
+    return mov
 
 def generate_movie():
-    t = np.arange(0., duration, Ts_world)
+    t = np.arange(0., duration, Ts)
     seq = imaging_background * np.ones((len(t), image_size[Y], image_size[X]))
     cells = generate_cells()
     neuropil = generate_neuropil()
@@ -298,9 +297,9 @@ def generate_movie():
     seq = construct(seq,cells,neuropil)
 
     seq = normalize(seq)
-    mov,t_im = image(seq,t)
+    mov = image(seq,t,cells)
     mov = np.rint(normalize(mov)*255.).astype(np.uint8)
-    return mov,cells,neuropil,stim,t,t_im
+    return mov,cells,neuropil,stim,t
 
 if __name__ == '__main__':
     n = 1
@@ -309,7 +308,7 @@ if __name__ == '__main__':
     for i in xrange(n):
         fname = fname_glob + '_' + str(i)
         fname = os.path.join(fname_glob, fname)
-        mov,cells,neuropil,stim,t,t_im = generate_movie()
+        mov,cells,neuropil,stim,t = generate_movie()
         save_mov(mov, fname, fmt='tif')
         save_mov(mov, fname, fmt='avi')
-        save_data(fname, cells,neuropil,stim,t,t_im)
+        save_data(fname, cells,neuropil,stim,t)
