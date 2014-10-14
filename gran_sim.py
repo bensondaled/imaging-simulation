@@ -28,7 +28,7 @@ Ts_microscope_pixels = 10.31e-6 #s/pixel
 Ts_microscope = Ts_microscope_pixels * np.product(image_size) #s/sample
 
 # the biological tissue
-soma_radius = [3., 0.2] #micrometers
+soma_radius = [2.75, 0.25] #micrometers
 soma_circularity_noise_world = [0., 2.] #micrometers
 soma_circularity_noise = [ss/Ds for ss in soma_circularity_noise_world] #pixels
 soma_density_field = 20 #cells per frame area
