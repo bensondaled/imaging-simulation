@@ -1,7 +1,7 @@
 """
 Notes.
 
-add movement/jitter? (size up, move, size down)
+currently messed with: tau_gcamp_rise, ca2f, marked with #TEMPORARY
 
 -rise time of gcamp is considered constant as of now
 -when the stochastic parameters are implemented, often abs() is used, meaning they are no longer truly gaussian
@@ -29,8 +29,8 @@ jitter_pad = [20, 20] #pixels
 jitter_lambda = 1.0 #poisson
 image_size = [i+j for i,j in zip(image_size_final, jitter_pad)]
 field_size = [Ds*i for i in image_size] #micrometers
-Ts_world = 0.02 #s/sample
 Ts_microscope = 0.064 #s/frame
+Ts_world = Ts_microscope/2 #s/sample
 
 # the biological tissue
 soma_radius = [3., 0.2] #micrometers
@@ -49,7 +49,7 @@ imaging_noise_mag = 1.5 #when movie is 0-1.0
 imaging_filter_sigma = [0., 0.2, 0.2]
 
 # indicator
-tau_gcamp_rise = 0.084 #s (58ms t1/2 rise dvidied by ln2)
+tau_gcamp_rise = 0.0001 #0.084 #s (58ms t1/2 rise dvidied by ln2) #TEMPORARY
 tau_gcamp_decay = 0.102 #s (71ms t1/2 decay divided by ln2)
 gcamp_kd = 0.29 #micromolar
 gcamp_nh = 2.46 #hill coef
@@ -81,6 +81,7 @@ def ca2f(ca):
         return (c**gcamp_nh)/(gcamp_kd + c**gcamp_nh)
     #convert a calcium concentration to an ideal fluorescence maximal value
     f = response_curve(ca)
+    return ca #TEMPORARY
     return f
 
 def generate_stim(t, shift):
