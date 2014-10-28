@@ -306,4 +306,4 @@ if __name__ == '__main__':
     sim = Simulation('test_mov_1435')
     sim.generate_movie()
     sim.save_mov(fmt='tif',dest='')
-    sim.save_data(dest='output')
+    sim.save_data(dest='')
