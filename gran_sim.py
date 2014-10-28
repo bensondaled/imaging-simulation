@@ -62,7 +62,7 @@ class Cell(object):
         
         idx0 = [np.floor(j/2.) for j in sim.jitter_pad] 
         idx1 = [isz-np.ceil(j/2.) for isz,j in zip(sim.image_size,sim.jitter_pad)]
-        self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]]
+        self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
         self.mask_im_with_nucleus = self.mask_with_nucleus[idx0[0]:idx1[0], idx0[1]:idx1[1]]
         self.was_in_fov = bool(np.sum(self.mask_im_with_nucleus))
 
@@ -274,8 +274,12 @@ class Simulation(object):
         self.mov = self.mov_filtered + noise
 
         for cell in cells:
-            cell.fluo_with_noise = np.mean(mov[:,cell.mask_im],axis=1)
-            cell.fluo_with_noise_with_nucleus = np.mean(mov[:,cell.mask_im_with_nucleus],axis=1)
+            if np.any(cell.mask_im) and np.any(cell.mask_im_with_nucleus):
+                cell.fluo_with_noise = np.mean(mov[:,cell.mask_im],axis=1)
+                cell.fluo_with_noise_with_nucleus = np.mean(mov[:,cell.mask_im_with_nucleus],axis=1)
+            else:
+                cell.fluo_with_noise = None
+                cell.fluo_with_noise_with_nucleus = None
 
         return self.mov
 
@@ -289,21 +293,20 @@ class Simulation(object):
             stim = self.generate_stim(cell.offset)
             cell.ca = self.generate_ca(stim, cell.tau_cdecay, cell.mag, cell.baseline)
             cell.fluo = self.generate_fluo(cell.ca, cell.gain, cell.expression)
-
+        
         self.stim = self.generate_stim(0.)
         self.neuropil.ca = self.generate_ca(self.stim, self.neuropil.tau_cdecay, self.neuropil_mag, self.neuropil_baseline)
         self.neuropil.fluo = self.generate_fluo(self.neuropil.ca)
-
+        
         seq = self.construct(seq,self.cells,self.neuropil)
-
+        
         seq = self.normalize(seq)
         mov = self.image(seq)
         mov = np.rint(self.normalize(mov)*255.).astype(np.uint8)
         self.mov = mov
-        return mov
 
 if __name__ == '__main__':
     sim = Simulation('test_mov_1435')
     sim.generate_movie()
-    sim.save_mov(fmt='tif',dest='')
-    sim.save_data(dest='output')
+    #sim.save_mov(fmt='tif',dest='output')
+    #sim.save_data(dest='output')
