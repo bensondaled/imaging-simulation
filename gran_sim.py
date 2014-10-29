@@ -5,7 +5,6 @@ Notes.
 -when the stochastic parameters are implemented, often abs() is used, meaning they are no longer truly gaussian
 """
 
-import cPickle as pickle
 import pylab as pl
 import cv2
 import numpy as np
@@ -143,10 +142,12 @@ class Simulation(object):
         for cl in self.cluster_centers:
             for c in np.arange(np.rint(n_cells/n_clusters)):
                 cell = Cell(self)
-                miny = max(0, cl[self.Y]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
-                minx = max(0, cl[self.X]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
-                maxy = min(self.field_size[self.Y], cl[self.Y]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
-                maxx = min(self.field_size[self.X], cl[self.X]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                miny,minx,maxy,maxx = 1,1,0,0
+                while miny>maxy or minx>maxx:
+                    miny = max(0, cl[self.Y]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                    minx = max(0, cl[self.X]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                    maxy = min(self.field_size[self.Y], cl[self.Y]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                    maxx = min(self.field_size[self.X], cl[self.X]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
                 cell.center = [rand.randint(minn,maxx) for minn,maxx in [(miny,maxy),(minx,maxx)]]
                 cell.radius = rand.normal(*self.soma_radius)
                 cell.nuc_radius = min(self.nucleus_radius[0]*cell.radius, rand.normal(*(np.array(self.nucleus_radius)*cell.radius)))
@@ -158,6 +159,7 @@ class Simulation(object):
                 cell.offset = rand.normal(*self.cell_timing_offset)
                 cell.compute_mask()
                 cells.append(cell)
+        self.n_cells_in_fov = sum([c.was_in_fov for c in cells])
         return cells
     def generate_neuropil(self):
         npil = Cell(self)
@@ -219,8 +221,14 @@ class Simulation(object):
     def save_data(self, dest=''):
         if not os.path.exists(dest) and dest != '':
             os.mkdir(dest)
-        fname = os.path.join(dest, self.fname + '.data')
-        pickle.dump(self, open(fname,'wb'))
+        fname = os.path.join(dest, self.fname)
+        params = {k:self.__dict__[k] for k in self.__dict__ if k not in ['cells','neuropil','t','mov','mov_nofilter','stim','mov_nojit','mov_filtered']}
+        cells = [cell.get_dict() for cell in self.cells]
+        npil = np.array([self.neuropil.get_dict()])
+        t = self.__dict__['t']
+        stim = self.__dict__['stim']
+        movie = np.array([{k:self.__dict__[k] for k in ['mov','mov_nofilter','mov_nojit','mov_filtered']}])
+        np.savez(fname, params=params, cells=cells, neuropil=npil, time=t, stim=stim, movie=movie)
 
     def image(self, seq):
         t = self.t
@@ -258,10 +266,12 @@ class Simulation(object):
         
         for cell in self.cells:
             stim = self.generate_stim(cell.offset)
+            cell.stim = stim
             cell.ca = self.generate_ca(stim, cell.tau_cdecay, cell.mag, cell.baseline)
             cell.fluo = self.generate_fluo(cell.ca, cell.gain, cell.expression)
         
         self.stim = self.generate_stim(0.)
+        self.neuropil.stim = self.stim
         self.neuropil.ca = self.generate_ca(self.stim, self.neuropil.tau_cdecay, self.neuropil_mag, self.neuropil_baseline)
         self.neuropil.fluo = self.generate_fluo(self.neuropil.ca)
         
@@ -319,9 +329,11 @@ class Cell(object):
         self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
         self.mask_im_with_nucleus = self.mask_with_nucleus[idx0[0]:idx1[0], idx0[1]:idx1[1]]
         self.was_in_fov = bool(np.sum(self.mask_im_with_nucleus))
+    def get_dict(self):
+        return {k:self.__dict__[k] for k in self.__dict__ if k not in ['sim']}
 
 if __name__ == '__main__':
-    sim = Simulation('test_mov_1435')
+    sim = Simulation('test_mov')
     sim.generate_movie()
     sim.save_mov(fmt='tif',dest='output')
     sim.save_data(dest='output')
