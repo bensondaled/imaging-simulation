@@ -75,7 +75,7 @@ class Simulation(object):
 
         # time and space
         self.Ds = 1.1 #micrometers/pixel
-        self.image_size_final = [32, 128] #pixels
+        self.image_size_final = [64, 128] #pixels
         self.jitter_pad = [20, 20] #pixels
         self.jitter_lambda = 1.0 #poisson
         self.image_size = [i+j for i,j in zip(self.image_size_final, self.jitter_pad)]
@@ -111,7 +111,7 @@ class Simulation(object):
         self.stim_f = 250. #spikes/s
         self.stim_dur = 0.500 #s
         self.stim_gap = 1.5 #s
-        self.stim_n = 8
+        self.stim_n = 48
         self.duration = (self.stim_onset + self.stim_dur + self.stim_gap) * self.stim_n #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
         # these are working on values from 0-1:
@@ -300,7 +300,7 @@ class Simulation(object):
         
         seq = self.construct(seq,self.cells,self.neuropil)
         
-        seq = self.normalize(seq)
+        self.seq = self.normalize(seq)
         mov = self.image(seq)
         mov = np.rint(self.normalize(mov)*255.).astype(np.uint8)
         self.mov = mov
@@ -308,5 +308,5 @@ class Simulation(object):
 if __name__ == '__main__':
     sim = Simulation('test_mov_1435')
     sim.generate_movie()
-    #sim.save_mov(fmt='tif',dest='output')
-    #sim.save_data(dest='output')
+    sim.save_mov(fmt='tif',dest='output')
+    sim.save_data(dest='output')
