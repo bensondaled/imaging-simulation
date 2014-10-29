@@ -18,53 +18,6 @@ try:
 except:
     pass
 
-class Cell(object):
-    #trailing underscores refer to pixels, otherwise units of Ds (ex. micrometers)
-    def __init__(self, sim):
-        self._center = 0.0
-        self._radius = 1.0
-        self._nuc_radius = 1.0
-        self.sim = sim
-    @property
-    def center(self):
-        return self._center
-    @center.setter
-    def center(self, val):
-        val = np.array(val)
-        self._center = val
-        self.center_ = np.rint(val / self.sim.Ds).astype(int)
-    @property
-    def radius(self):
-        return self._radius
-    @radius.setter
-    def radius(self, val):
-        self._radius = val
-        self.radius_ = np.rint(val / self.sim.Ds).astype(int)
-    @property
-    def nuc_radius(self):
-        return self._nuc_radius
-    @nuc_radius.setter
-    def nuc_radius(self, val):
-        self._nuc_radius = val
-        self.nuc_radius_ = np.rint(val / self.sim.Ds).astype(int)
-    def compute_mask(self):
-        y,x = sim.image_size
-        cy,cx = self.center_
-        r = self.radius_
-        nr = self.nuc_radius_
-        dy,dx = np.ogrid[-cy:y-cy, -cx:x-cx]
-        pos_array = dy*dy + dx*dx
-        pos_array += rand.normal(*sim.soma_circularity_noise, size=pos_array.shape)
-        pos_array = np.rint(pos_array)
-        self.mask = pos_array <= r*r
-        self.mask_with_nucleus = np.copy(self.mask)
-        self.mask[pos_array <= nr*nr] = False
-        
-        idx0 = [np.floor(j/2.) for j in sim.jitter_pad] 
-        idx1 = [isz-np.ceil(j/2.) for isz,j in zip(sim.image_size,sim.jitter_pad)]
-        self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
-        self.mask_im_with_nucleus = self.mask_with_nucleus[idx0[0]:idx1[0], idx0[1]:idx1[1]]
-        self.was_in_fov = bool(np.sum(self.mask_im_with_nucleus))
 
 class Simulation(object):
     MEAN,STD = 0,1
@@ -75,7 +28,7 @@ class Simulation(object):
 
         # time and space
         self.Ds = 1.1 #micrometers/pixel
-        self.image_size_final = [64, 128] #pixels
+        self.image_size_final = [32, 128] #pixels
         self.jitter_pad = [20, 20] #pixels
         self.jitter_lambda = 1.0 #poisson
         self.image_size = [i+j for i,j in zip(self.image_size_final, self.jitter_pad)]
@@ -89,13 +42,16 @@ class Simulation(object):
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
         self.soma_density_field = 80 #cells per frame area
         self.soma_density = self.soma_density_field / np.product(self.field_size) #cells/micrometer_squared
+        self.soma_clusters_density_field = 5 #cluster per frame area
+        self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size) #clusters/micrometer_squared
+        self.soma_cluster_spread = [5., 9.] #distance from cluster center, as multiple of mean expected soma radius
         self.ca_rest = 0.050 #micromolar
-        self.neuropil_density = 0.8 #neuropil probability at any given point
+        self.neuropil_density = 1.0 #neuropil probability at any given point
 
         # the imaging equipment
         self.imaging_background = 0.1
         self.imaging_noise_lam = 3.0
-        self.imaging_noise_mag = 1.5 #when movie is 0-1.0
+        self.imaging_noise_mag = 1.2 #when movie is 0-1.0
         self.imaging_filter_sigma = [0., 0.2, 0.2]
 
         # indicator
@@ -111,7 +67,7 @@ class Simulation(object):
         self.stim_f = 250. #spikes/s
         self.stim_dur = 0.500 #s
         self.stim_gap = 1.5 #s
-        self.stim_n = 48
+        self.stim_n = 10
         self.duration = (self.stim_onset + self.stim_dur + self.stim_gap) * self.stim_n #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
         # these are working on values from 0-1:
@@ -122,7 +78,7 @@ class Simulation(object):
         self.neuropil_mag = 0.9 #as a fraction of average cell magnitude
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
-        self.npil_ca_dist_noise = [-1, 1.0]
+        self.npil_ca_dist_noise = [-1, 2.0]
 
     def ca2f(self, ca):
         def response_curve(c): 
@@ -180,21 +136,28 @@ class Simulation(object):
         return fbsl + f * gain
 
     def generate_cells(self):
+        n_clusters = np.rint(self.soma_clusters_density * np.product(self.field_size))
+        self.cluster_centers = [[rand.randint(0,i) for i in self.field_size] for cl in np.arange(n_clusters)]
         n_cells = np.rint(self.soma_density * np.product(self.field_size))
         cells = []
-        for c in np.arange(n_cells):
-            cell = Cell(self)
-            cell.center = [rand.randint(0,i) for i in self.field_size]
-            cell.radius = rand.normal(*self.soma_radius)
-            cell.nuc_radius = min(self.nucleus_radius[0]*cell.radius, rand.normal(*(np.array(self.nucleus_radius)*cell.radius)))
-            cell.mag = abs(rand.normal(*self.cell_magnitude))
-            cell.baseline = abs(rand.normal(*self.cell_baseline)) #will be the multiplying factor to the standard ca baseline
-            cell.tau_cdecay = max(1.e-10, rand.normal(*self.tau_ca_decay))
-            cell.gain = abs(rand.normal(*self.cell_gain))
-            cell.expression = abs(rand.normal(*self.cell_expression))
-            cell.offset = rand.normal(*self.cell_timing_offset)
-            cell.compute_mask()
-            cells.append(cell)
+        for cl in self.cluster_centers:
+            for c in np.arange(np.rint(n_cells/n_clusters)):
+                cell = Cell(self)
+                miny = max(0, cl[self.Y]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                minx = max(0, cl[self.X]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                maxy = min(self.field_size[self.Y], cl[self.Y]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                maxx = min(self.field_size[self.X], cl[self.X]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                cell.center = [rand.randint(minn,maxx) for minn,maxx in [(miny,maxy),(minx,maxx)]]
+                cell.radius = rand.normal(*self.soma_radius)
+                cell.nuc_radius = min(self.nucleus_radius[0]*cell.radius, rand.normal(*(np.array(self.nucleus_radius)*cell.radius)))
+                cell.mag = abs(rand.normal(*self.cell_magnitude))
+                cell.baseline = abs(rand.normal(*self.cell_baseline)) #will be the multiplying factor to the standard ca baseline
+                cell.tau_cdecay = max(1.e-10, rand.normal(*self.tau_ca_decay))
+                cell.gain = abs(rand.normal(*self.cell_gain))
+                cell.expression = abs(rand.normal(*self.cell_expression))
+                cell.offset = rand.normal(*self.cell_timing_offset)
+                cell.compute_mask()
+                cells.append(cell)
         return cells
     def generate_neuropil(self):
         npil = Cell(self)
@@ -237,6 +200,8 @@ class Simulation(object):
         return seq
 
     def save_mov(self, fmt='avi', dest=''):
+        if not os.path.exists(dest) and dest != '':
+            os.mkdir(dest)
         mov = self.mov
         fname = os.path.join(dest,self.fname + '.' + fmt)
         if fmt=='avi':
@@ -252,17 +217,19 @@ class Simulation(object):
                 raise Exception('No working module for tiff saving.')
 
     def save_data(self, dest=''):
+        if not os.path.exists(dest) and dest != '':
+            os.mkdir(dest)
         fname = os.path.join(dest, self.fname + '.data')
         pickle.dump(self, open(fname,'wb'))
 
     def image(self, seq):
         t = self.t
         cells = self.cells
-        mov_nojit = seq
+        self.mov_nojit = seq
         idx0 = [np.floor(j/2.) for j in self.jitter_pad] 
         idx1 = [isz-np.ceil(j/2.) for isz,j in zip(self.image_size,self.jitter_pad)]
-        mov = np.empty((len(mov_nojit),self.image_size_final[0],self.image_size_final[1]))
-        for fidx,frame in enumerate(mov_nojit):
+        mov = np.empty((len(self.mov_nojit),self.image_size_final[0],self.image_size_final[1]))
+        for fidx,frame in enumerate(self.mov_nojit):
             sn = rand.choice([-1., 1.], size=2)
             jmag = rand.choice([0.,1.],size=2)# rand.poisson(jitter_lambda, size=2)
             jity,jitx = sn*jmag
@@ -300,10 +267,58 @@ class Simulation(object):
         
         seq = self.construct(seq,self.cells,self.neuropil)
         
-        self.seq = self.normalize(seq)
+        seq = self.normalize(seq)
         mov = self.image(seq)
         mov = np.rint(self.normalize(mov)*255.).astype(np.uint8)
         self.mov = mov
+
+class Cell(object):
+    #trailing underscores refer to pixels, otherwise units of Ds (ex. micrometers)
+    def __init__(self, sim):
+        self._center = 0.0
+        self._radius = 1.0
+        self._nuc_radius = 1.0
+        self.sim = sim
+    @property
+    def center(self):
+        return self._center
+    @center.setter
+    def center(self, val):
+        val = np.array(val)
+        self._center = val
+        self.center_ = np.rint(val / self.sim.Ds).astype(int)
+    @property
+    def radius(self):
+        return self._radius
+    @radius.setter
+    def radius(self, val):
+        self._radius = val
+        self.radius_ = np.rint(val / self.sim.Ds).astype(int)
+    @property
+    def nuc_radius(self):
+        return self._nuc_radius
+    @nuc_radius.setter
+    def nuc_radius(self, val):
+        self._nuc_radius = val
+        self.nuc_radius_ = np.rint(val / self.sim.Ds).astype(int)
+    def compute_mask(self):
+        y,x = sim.image_size
+        cy,cx = self.center_
+        r = self.radius_
+        nr = self.nuc_radius_
+        dy,dx = np.ogrid[-cy:y-cy, -cx:x-cx]
+        pos_array = dy*dy + dx*dx
+        pos_array += rand.normal(*sim.soma_circularity_noise, size=pos_array.shape)
+        pos_array = np.rint(pos_array)
+        self.mask = pos_array <= r*r
+        self.mask_with_nucleus = np.copy(self.mask)
+        self.mask[pos_array <= nr*nr] = False
+        
+        idx0 = [np.floor(j/2.) for j in sim.jitter_pad] 
+        idx1 = [isz-np.ceil(j/2.) for isz,j in zip(sim.image_size,sim.jitter_pad)]
+        self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
+        self.mask_im_with_nucleus = self.mask_with_nucleus[idx0[0]:idx1[0], idx0[1]:idx1[1]]
+        self.was_in_fov = bool(np.sum(self.mask_im_with_nucleus))
 
 if __name__ == '__main__':
     sim = Simulation('test_mov_1435')
