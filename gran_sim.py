@@ -308,10 +308,5 @@ class Simulation(object):
 if __name__ == '__main__':
     sim = Simulation('test_mov_1435')
     sim.generate_movie()
-<<<<<<< HEAD
-    sim.save_mov(fmt='tif',dest='')
-    sim.save_data(dest='')
-=======
     sim.save_mov(fmt='tif',dest='output')
     sim.save_data(dest='output')
->>>>>>> eb7e27b183e1d4dd41f9cd9d03694f88c82992e3
