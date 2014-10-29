@@ -41,11 +41,11 @@ class Simulation(object):
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
         self.soma_density_field = 80 #cells per frame area
         self.soma_density = self.soma_density_field / np.product(self.field_size) #cells/micrometer_squared
-        self.soma_clusters_density_field = 5 #cluster per frame area
+        self.soma_clusters_density_field = 6 #cluster per frame area
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size) #clusters/micrometer_squared
-        self.soma_cluster_spread = [5., 9.] #distance from cluster center, as multiple of mean expected soma radius
+        self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
         self.ca_rest = 0.050 #micromolar
-        self.neuropil_density = 1.0 #neuropil probability at any given point
+        self.neuropil_density = 0.9 #neuropil probability at any given point
 
         # the imaging equipment
         self.imaging_background = 0.1
@@ -77,7 +77,7 @@ class Simulation(object):
         self.neuropil_mag = 0.9 #as a fraction of average cell magnitude
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
-        self.npil_ca_dist_noise = [-1, 2.0]
+        self.npil_ca_dist_noise = [-1, 2.5]
 
     def ca2f(self, ca):
         def response_curve(c): 
