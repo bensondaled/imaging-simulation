@@ -2,7 +2,8 @@
 Notes.
 
 -rise time of gcamp is considered constant as of now
--when the stochastic parameters are implemented, often abs() is used, meaning they are no longer truly gaussian
+-when the stochastic parameters are implemented, often abs() is used, meaning they are no longer truly gaussian but half gaussian
+-clusters centers are constrained to within the final FOV, though cells can still end up outside. importantly, soma density is only a rough parameter. number of clusters inside FOV will be on average the number specified
 """
 
 import pylab as pl
@@ -32,6 +33,8 @@ class Simulation(object):
         self.jitter_lambda = 1.0 #poisson
         self.image_size = [i+j for i,j in zip(self.image_size_final, self.jitter_pad)]
         self.field_size = [self.Ds*i for i in self.image_size] #micrometers
+        self.field_size_final = [self.Ds*i for i in self.image_size_final] #micrometers
+        self.image_placement = [[np.floor(j/2.) for j in self.jitter_pad], [isz-np.ceil(j/2.) for isz,j in zip(self.image_size,self.jitter_pad)]] #[first, last]
         self.Ts = 0.064 #s/frame
 
         # the biological tissue
@@ -39,10 +42,10 @@ class Simulation(object):
         self.soma_circularity_noise_world = [0., 0.15] #micrometers
         self.soma_circularity_noise = [ss/self.Ds for ss in self.soma_circularity_noise_world] #pixels
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
-        self.soma_density_field = 80 #cells per frame area
-        self.soma_density = self.soma_density_field / np.product(self.field_size) #cells/micrometer_squared
-        self.soma_clusters_density_field = 6 #cluster per frame area
-        self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size) #clusters/micrometer_squared
+        self.soma_density_field = 40 #cells per *final* frame area
+        self.soma_density = self.soma_density_field / np.product(self.field_size_final) #cells/micrometer_squared
+        self.soma_clusters_density_field = 6 #*expected* cluster per *final* frame area
+        self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
         self.ca_rest = 0.050 #micromolar
         self.neuropil_density = 0.9 #neuropil probability at any given point
@@ -50,7 +53,7 @@ class Simulation(object):
         # the imaging equipment
         self.imaging_background = 0.1
         self.imaging_noise_lam = 3.0
-        self.imaging_noise_mag = 1.2 #when movie is 0-1.0
+        self.imaging_noise_mag = 1.0 #when movie is 0-1.0
         self.imaging_filter_sigma = [0., 0.2, 0.2]
 
         # indicator
@@ -136,8 +139,11 @@ class Simulation(object):
 
     def generate_cells(self):
         n_clusters = np.rint(self.soma_clusters_density * np.product(self.field_size))
-        self.cluster_centers = [[rand.randint(0,i) for i in self.field_size] for cl in np.arange(n_clusters)]
         n_cells = np.rint(self.soma_density * np.product(self.field_size))
+        
+        self.cluster_centers = [[rand.uniform(0,i) for i in self.field_size] for cl in np.arange(n_clusters)] #in Ds units
+        self.cluster_centers_im = [list(np.array(cs)-np.array(self.image_placement[0])) for cs in self.cluster_centers] #also in Ds units
+        self.cluster_centers_im_,self.cluster_centers_ = [np.rint(np.array(i)/self.Ds) for i in [self.cluster_centers_im, self.cluster_centers]] #in pixels
         cells = []
         for cl in self.cluster_centers:
             for c in np.arange(np.rint(n_cells/n_clusters)):
@@ -234,8 +240,7 @@ class Simulation(object):
         t = self.t
         cells = self.cells
         self.mov_nojit = seq
-        idx0 = [np.floor(j/2.) for j in self.jitter_pad] 
-        idx1 = [isz-np.ceil(j/2.) for isz,j in zip(self.image_size,self.jitter_pad)]
+        idx0,idx1 = self.image_placement
         mov = np.empty((len(self.mov_nojit),self.image_size_final[0],self.image_size_final[1]))
         for fidx,frame in enumerate(self.mov_nojit):
             sn = rand.choice([-1., 1.], size=2)
@@ -297,6 +302,8 @@ class Cell(object):
         val = np.array(val)
         self._center = val
         self.center_ = np.rint(val / self.sim.Ds).astype(int)
+        self.center_im_ = np.array(self.center_)-np.array(self.sim.image_placement[0])
+        self.center_im = self.center_im_ * self.sim.Ds
     @property
     def radius(self):
         return self._radius
@@ -324,8 +331,7 @@ class Cell(object):
         self.mask_with_nucleus = np.copy(self.mask)
         self.mask[pos_array <= nr*nr] = False
         
-        idx0 = [np.floor(j/2.) for j in sim.jitter_pad] 
-        idx1 = [isz-np.ceil(j/2.) for isz,j in zip(sim.image_size,sim.jitter_pad)]
+        idx0,idx1 = sim.image_placement
         self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
         self.mask_im_with_nucleus = self.mask_with_nucleus[idx0[0]:idx1[0], idx0[1]:idx1[1]]
         self.was_in_fov = bool(np.sum(self.mask_im_with_nucleus))
