@@ -323,19 +323,19 @@ class Cell(object):
         self._nuc_radius = val
         self.nuc_radius_ = np.rint(val / self.sim.Ds).astype(int)
     def compute_mask(self):
-        y,x = sim.image_size
+        y,x = self.sim.image_size
         cy,cx = self.center_
         r = self.radius_
         nr = self.nuc_radius_
         dy,dx = np.ogrid[-cy:y-cy, -cx:x-cx]
         pos_array = dy*dy + dx*dx
-        pos_array += rand.normal(*sim.soma_circularity_noise, size=pos_array.shape)
+        pos_array += rand.normal(*self.sim.soma_circularity_noise, size=pos_array.shape)
         pos_array = np.rint(pos_array)
         self.mask = pos_array <= r*r
         self.mask_with_nucleus = np.copy(self.mask)
         self.mask[pos_array <= nr*nr] = False
         
-        idx0,idx1 = sim.image_placement
+        idx0,idx1 = self.sim.image_placement
         self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
         self.mask_im_with_nucleus = self.mask_with_nucleus[idx0[0]:idx1[0], idx0[1]:idx1[1]]
         self.was_in_fov = bool(np.sum(self.mask_im_with_nucleus))

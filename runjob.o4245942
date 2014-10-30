@@ -1,0 +1,18 @@
+------------------------------
+i am running on node26.cluster
+started at Thu Oct 30 17:22:19 EDT 2014
+in /usr/people/deverett/projects/imaging-simulation
+by deverett
+via the command:
+pni_submit runjob
+------------------------------
+Traceback (most recent call last):
+  File "generate_simulations.py", line 8, in <module>
+    sim.generate_movie()
+  File "/usr/people/deverett/projects/imaging-simulation/simulations.py", line 274, in generate_movie
+    self.cells = self.generate_cells()
+  File "/usr/people/deverett/projects/imaging-simulation/simulations.py", line 167, in generate_cells
+    cell.compute_mask()
+  File "/usr/people/deverett/projects/imaging-simulation/simulations.py", line 326, in compute_mask
+    y,x = sim.image_size
+NameError: global name 'sim' is not defined
