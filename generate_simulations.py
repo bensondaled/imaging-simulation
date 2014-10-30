@@ -1,4 +1,4 @@
-from gran_sim import Simulation
+from simulations import Simulation
 
 n = 3
 dest = 'output_folder'
