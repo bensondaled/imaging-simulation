@@ -69,7 +69,7 @@ class Simulation(object):
         self.stim_f = 300. #spikes/s
         self.stim_dur = [0.500, 0.200] #s
         self.stim_gap = 1.5 #s
-        self.stim_n = 80
+        self.stim_n = 2#80
         self.stim_durs = rand.normal(*self.stim_dur, size=self.stim_n)
         self.duration = (self.stim_onset + self.stim_gap) * self.stim_n + np.sum(self.stim_durs) #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
@@ -263,8 +263,8 @@ class Simulation(object):
                 cell.fluo_with_noise = np.mean(mov[:,cell.mask_im],axis=1)
                 cell.fluo_with_noise_with_nucleus = np.mean(mov[:,cell.mask_im_with_nucleus],axis=1)
             else:
-                cell.fluo_with_noise = None
-                cell.fluo_with_noise_with_nucleus = None
+                cell.fluo_with_noise = np.array([])
+                cell.fluo_with_noise_with_nucleus = np.array([])
 
         return self.mov
 
@@ -345,5 +345,6 @@ class Cell(object):
 if __name__ == '__main__':
     sim = Simulation('test_mov')
     sim.generate_movie()
-    sim.save_mov(fmt='tif',dest='output')
-    sim.save_data(fmt='npy', dest='output')
+    #sim.save_mov(fmt='tif',dest='output')
+    #sim.save_data(fmt='npy', dest='output')
+    sim.save_data(fmt='mat', dest='output')
