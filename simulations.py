@@ -150,7 +150,7 @@ class Simulation(object):
             for c in np.arange(np.rint(n_cells/n_clusters)):
                 cell = Cell(self)
                 miny,minx,maxy,maxx = 1,1,0,0
-                while miny>maxy or minx>maxx:
+                while miny>=maxy or minx>=maxx:
                     miny = max(0, cl[self.Y]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
                     minx = max(0, cl[self.X]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
                     maxy = min(self.field_size[self.Y], cl[self.Y]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
