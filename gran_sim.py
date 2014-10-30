@@ -28,7 +28,7 @@ class Simulation(object):
 
         # time and space
         self.Ds = 1.1 #micrometers/pixel
-        self.image_size_final = [32, 128] #pixels
+        self.image_size_final = [64, 128] #pixels
         self.jitter_pad = [20, 20] #pixels
         self.jitter_lambda = 1.0 #poisson
         self.image_size = [i+j for i,j in zip(self.image_size_final, self.jitter_pad)]
@@ -64,13 +64,14 @@ class Simulation(object):
 
         # the biological event
         self.tau_ca_decay = [0.250, 0.050] #s
-        self.ca_per_ap = 0.200 #micromolar
+        self.ca_per_ap = 0.010 #micromolar
         self.stim_onset = 0.5 #s
-        self.stim_f = 250. #spikes/s
-        self.stim_dur = 0.500 #s
+        self.stim_f = 300. #spikes/s
+        self.stim_dur = [0.500, 0.200] #s
         self.stim_gap = 1.5 #s
-        self.stim_n = 10
-        self.duration = (self.stim_onset + self.stim_dur + self.stim_gap) * self.stim_n #s
+        self.stim_n = 80
+        self.stim_durs = rand.normal(*self.stim_dur, size=self.stim_n)
+        self.duration = (self.stim_onset + self.stim_gap) * self.stim_n + np.sum(self.stim_durs) #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
         # these are working on values from 0-1:
         self.cell_magnitude = [1.0, 0.01] #magnitude of cells' *ca* response amplitudes relative to each other
@@ -93,12 +94,12 @@ class Simulation(object):
         #time array, onset time, frequency of APs, duration of stim
         #assumes t has constant sampling rate
         t = self.t
-        onsets = [(self.stim_onset+self.stim_dur+self.stim_gap)*i + self.stim_onset for i in xrange(self.stim_n)]
+        onsets = [(self.stim_onset+self.stim_gap)*i + np.sum(self.stim_durs[:i]) + self.stim_onset for i in xrange(self.stim_n)]
         onsets = [o + abs(shift) for o in onsets]
          
         stim = np.zeros_like(t)
         self.idxs_start = [np.argmin(np.abs(onset-t)) for onset in onsets]
-        self.idxs_end = [np.argmin(np.abs((onset+self.stim_dur)-t)) for onset in onsets]
+        self.idxs_end = [np.argmin(np.abs((onset+sd)-t)) for onset,sd in zip(onsets,self.stim_durs)]
         if self.stim_f*self.Ts > 1.0: #more than one spike per sample
             self.stim_f_use = 1/self.Ts
             self.sps = self.stim_f/self.stim_f_use
@@ -224,7 +225,7 @@ class Simulation(object):
             except:
                 raise Exception('No working module for tiff saving.')
 
-    def save_data(self, dest=''):
+    def save_data(self, fmt='npy', dest=''):
         if not os.path.exists(dest) and dest != '':
             os.mkdir(dest)
         fname = os.path.join(dest, self.fname)
@@ -234,7 +235,11 @@ class Simulation(object):
         t = self.__dict__['t']
         stim = self.__dict__['stim']
         movie = np.array([{k:self.__dict__[k] for k in ['mov','mov_nofilter','mov_nojit','mov_filtered']}])
-        np.savez(fname, params=params, cells=cells, neuropil=npil, time=t, stim=stim, movie=movie)
+        if fmt in ['npy','npz','numpy','n']:
+            np.savez(fname, params=params, cells=cells, neuropil=npil, time=t, stim=stim, movie=movie)
+        elif fmt in ['mat','matlab','m']:
+            matdic = {'params':params, 'cells':cells, 'neuropil':npil, 'time':t, 'stim':stim, 'movie':movie}
+            savemat(fname, matdic)
 
     def image(self, seq):
         t = self.t
@@ -270,9 +275,8 @@ class Simulation(object):
         self.neuropil = self.generate_neuropil()
         
         for cell in self.cells:
-            stim = self.generate_stim(cell.offset)
-            cell.stim = stim
-            cell.ca = self.generate_ca(stim, cell.tau_cdecay, cell.mag, cell.baseline)
+            cell.stim = self.generate_stim(cell.offset)
+            cell.ca = self.generate_ca(cell.stim, cell.tau_cdecay, cell.mag, cell.baseline)
             cell.fluo = self.generate_fluo(cell.ca, cell.gain, cell.expression)
         
         self.stim = self.generate_stim(0.)
@@ -342,4 +346,4 @@ if __name__ == '__main__':
     sim = Simulation('test_mov')
     sim.generate_movie()
     sim.save_mov(fmt='tif',dest='output')
-    sim.save_data(dest='output')
+    sim.save_data(fmt='npy', dest='output')
