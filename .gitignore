@@ -1,8 +1,10 @@
 .DS_Store
 
+runjob*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
-#*.py[cod]
+*.py[cod]
 
 # C extensions
 *.so
