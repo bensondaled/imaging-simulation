@@ -69,8 +69,8 @@ class Simulation(object):
         self.stim_f = 300. #spikes/s
         self.stim_dur = [0.500, 0.200] #s
         self.stim_gap = 1.5 #s
-        self.stim_n = 2#80
-        self.stim_durs = rand.normal(*self.stim_dur, size=self.stim_n)
+        self.stim_n = 20
+        self.stim_durs = np.array([self.stim_dur[0] for _ in xrange(self.stim_n)])#rand.normal(*self.stim_dur, size=self.stim_n)
         self.duration = (self.stim_onset + self.stim_gap) * self.stim_n + np.sum(self.stim_durs) #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
         # these are working on values from 0-1:
