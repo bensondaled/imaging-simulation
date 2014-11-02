@@ -101,10 +101,11 @@ class Simulation(object):
         t = self.t
         onsets = [(self.stim_onset+self.stim_gap)*i + np.sum(self.stim_durs[:i]) + self.stim_onset for i in xrange(self.stim_n)]
         onsets = [o + abs(shift) for o in onsets]
-         
+        self.dur_idxs = np.round([sd/self.Ts for sd in self.stim_durs])
+
         stim = np.zeros_like(t)
-        self.idxs_start = [np.argmin(np.abs(onset-t)) for onset in onsets]
-        self.idxs_end = [np.argmin(np.abs((onset+sd)-t)) for onset,sd in zip(onsets,self.stim_durs)]
+        self.idxs_start = np.round(np.array(onsets)/self.Ts)
+        self.idxs_end = self.idxs_start + self.dur_idxs
         if self.stim_f*self.Ts > 1.0: #more than one spike per sample
             self.stim_f_use = 1/self.Ts
             self.sps = self.stim_f/self.stim_f_use
@@ -112,6 +113,7 @@ class Simulation(object):
             self.sps = 1.0
             self.stim_f_use = self.stim_f
         idxs = np.concatenate([np.arange(idx_start, idx_end, np.rint(1./(self.stim_f_use*self.Ts)), dtype=int) for idx_start,idx_end in zip(self.idxs_start, self.idxs_end)])
+        idxs = [i for i in idxs if i<len(stim)]
         stim[idxs] = self.sps
         return stim
 
@@ -181,6 +183,8 @@ class Simulation(object):
     def generate_neuropil(self):
         npil = Cell(self)
         npil.mask = rand.random(self.image_size)<self.neuropil_density
+        idx0,idx1 = self.image_placement
+        npil.mask_im = npil.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
         npil.tau_cdecay = max(1.e-10,rand.normal(*self.tau_ca_decay))
         return npil
 
@@ -277,6 +281,7 @@ class Simulation(object):
             else:
                 cell.fluo_with_noise = np.array([])
                 cell.fluo_with_noise_with_nucleus = np.array([])
+        self.neuropil.fluo_with_noise = np.mean(self.mov[:,self.neuropil.mask_im],axis=1)
     def generate_movie(self):
         self.t = np.arange(0., self.duration, self.Ts)
         seq = self.imaging_background * np.ones((len(self.t), self.image_size[self.Y], self.image_size[self.X]))
