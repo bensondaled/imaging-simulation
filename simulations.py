@@ -43,7 +43,6 @@ class Simulation(object):
         self.soma_circularity_noise = [ss/self.Ds for ss in self.soma_circularity_noise_world] #pixels
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
         self.soma_density_field = 40 #cells per *final* frame area
-        self.soma_density = self.soma_density_field / np.product(self.field_size_final) #cells/micrometer_squared
         self.soma_clusters_density_field = 6 #*expected* cluster per *final* frame area
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
@@ -69,7 +68,7 @@ class Simulation(object):
         self.stim_f = 300. #spikes/s
         self.stim_dur = [0.500, 0.200] #s
         self.stim_gap = 1.5 #s
-        self.stim_n = 20
+        self.stim_n = 17
         self.stim_durs = np.array([self.stim_dur[0] for _ in xrange(self.stim_n)])#rand.normal(*self.stim_dur, size=self.stim_n)
         self.duration = (self.stim_onset + self.stim_gap) * self.stim_n + np.sum(self.stim_durs) #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
@@ -82,7 +81,13 @@ class Simulation(object):
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
         self.npil_ca_dist_noise = [-1, 2.5]
-
+    @property
+    def soma_density_field(self):
+        return self._soma_density_field
+    @soma_density_field.setter
+    def soma_density_field(self,val):
+        self._soma_density_field = val
+        self.soma_density = self._soma_density_field / np.product(self.field_size_final) #cells/micrometer_squared
     def ca2f(self, ca):
         def response_curve(c): 
             return (c**self.gcamp_nh)/(self.gcamp_kd + c**self.gcamp_nh)
@@ -150,12 +155,17 @@ class Simulation(object):
             for c in np.arange(np.rint(n_cells/n_clusters)):
                 cell = Cell(self)
                 miny,minx,maxy,maxx = 1,1,0,0
-                while miny>=maxy or minx>=maxx:
+                while miny>=maxy:
                     miny = max(0, cl[self.Y]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
-                    minx = max(0, cl[self.X]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
                     maxy = min(self.field_size[self.Y], cl[self.Y]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
+                    miny = round(miny)
+                    maxy = round(maxy)
+                while minx>=maxx:
+                    minx = max(0, cl[self.X]-abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
                     maxx = min(self.field_size[self.X], cl[self.X]+abs(rand.normal(*self.soma_cluster_spread)*self.soma_radius[0]))
-                cell.center = [rand.randint(minn,maxx) for minn,maxx in [(miny,maxy),(minx,maxx)]]
+                    minx = round(minx)
+                    maxx = round(maxx)
+                cell.center = [rand.randint(qmin,qmax) for qmin,qmax in [(miny,maxy),(minx,maxx)]]
                 cell.radius = rand.normal(*self.soma_radius)
                 cell.nuc_radius = min(self.nucleus_radius[0]*cell.radius, rand.normal(*(np.array(self.nucleus_radius)*cell.radius)))
                 cell.mag = abs(rand.normal(*self.cell_magnitude))
@@ -258,16 +268,15 @@ class Simulation(object):
         noise = self.imaging_noise_mag * noise/np.max(noise)
         self.mov = self.mov_filtered + noise
 
-        for cell in cells:
+        return self.mov
+    def store_noisy(self):
+        for cell in self.cells:
             if np.any(cell.mask_im) and np.any(cell.mask_im_with_nucleus):
-                cell.fluo_with_noise = np.mean(mov[:,cell.mask_im],axis=1)
-                cell.fluo_with_noise_with_nucleus = np.mean(mov[:,cell.mask_im_with_nucleus],axis=1)
+                cell.fluo_with_noise = np.mean(self.mov[:,cell.mask_im],axis=1)
+                cell.fluo_with_noise_with_nucleus = np.mean(self.mov[:,cell.mask_im_with_nucleus],axis=1)
             else:
                 cell.fluo_with_noise = np.array([])
                 cell.fluo_with_noise_with_nucleus = np.array([])
-
-        return self.mov
-
     def generate_movie(self):
         self.t = np.arange(0., self.duration, self.Ts)
         seq = self.imaging_background * np.ones((len(self.t), self.image_size[self.Y], self.image_size[self.X]))
@@ -290,6 +299,7 @@ class Simulation(object):
         mov = self.image(seq)
         mov = np.rint(self.normalize(mov)*255.).astype(np.uint8)
         self.mov = mov
+        self.store_noisy()
 
 class Cell(object):
     #trailing underscores refer to pixels, otherwise units of Ds (ex. micrometers)
