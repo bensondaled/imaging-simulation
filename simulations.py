@@ -68,7 +68,7 @@ class Simulation(object):
         self.stim_f = 300. #spikes/s
         self.stim_dur = [0.500, 0.200] #s
         self.stim_gap = 1.5 #s
-        self.stim_n = 17
+        self.stim_n = 30
         self.stim_durs = np.array([self.stim_dur[0] for _ in xrange(self.stim_n)])#rand.normal(*self.stim_dur, size=self.stim_n)
         self.duration = (self.stim_onset + self.stim_gap) * self.stim_n + np.sum(self.stim_durs) #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
@@ -76,8 +76,8 @@ class Simulation(object):
         self.cell_magnitude = [1.0, 0.01] #magnitude of cells' *ca* response amplitudes relative to each other
         self.cell_baseline = [1.0, 0.01] #magnitude of cells' *ca* baseline values relative to each other. This is a multiplier to the bseline Ca
         self.cell_gain = [1.0, 0.01] #note that this refers to indicator while magnitude and baseline refer to calcium. it's the baseline *and* magnitude of a cell's fluorescent response relative to other cells (i.e. a multiplying factor for converting ca to f)
-        self.cell_expression = [0.0, 100.0] #this value also refers to indicator and not ca. Importantly, it represents the proportion of the global resting *fluorescence* level that will be *added* to the fluorescence
-        self.neuropil_mag = 0.9 #as a fraction of average cell magnitude
+        self.cell_expression = [0.0, 100.0] #this value also refers to indicator and not ca. Importantly, it represents the proportion of the global *resting fluorescence* level that will be *added* to the fluorescence
+        self.neuropil_mag = 0.95 #as a fraction of average cell magnitude
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
         self.npil_ca_dist_noise = [-1, 2.5]
@@ -224,7 +224,7 @@ class Simulation(object):
 
     def save_mov(self, fmt='avi', dest=''):
         if not os.path.exists(dest) and dest != '':
-            os.mkdir(dest)
+            os.makedirs(dest)
         mov = self.mov
         fname = os.path.join(dest,self.fname + '.' + fmt)
         if fmt=='avi':
@@ -241,7 +241,7 @@ class Simulation(object):
 
     def save_data(self, fmt='npy', dest=''):
         if not os.path.exists(dest) and dest != '':
-            os.mkdir(dest)
+            os.makedirs(dest)
         fname = os.path.join(dest, self.fname)
         params = {k:self.__dict__[k] for k in self.__dict__ if k not in ['cells','neuropil','t','mov','mov_nofilter','stim','mov_nojit','mov_filtered']}
         cells = [cell.get_dict() for cell in self.cells]

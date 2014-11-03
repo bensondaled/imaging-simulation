@@ -2,6 +2,7 @@ from simulations import Simulation
 import json
 import sys
 import numpy as np
+import os
 
 task_id = sys.argv[1]
 task_id = int(task_id)-1
@@ -21,9 +22,10 @@ val_list = vals[var_n]
 val = val_list[val_n]
     
 name = "%02d_%03d"%(var_n,val_n)
+subfol = os.path.join(dest,name)
 sim = Simulation(name)
 setattr(sim,varr,val)
 sim.generate_movie()
-sim.save_mov(fmt='tif',dest=dest)
-sim.save_data(fmt='npy', dest=dest)
-sim.save_data(fmt='mat', dest=dest)
+sim.save_mov(fmt='tif',dest=subfol)
+sim.save_data(fmt='npy', dest=subfol)
+sim.save_data(fmt='mat', dest=subfol)
