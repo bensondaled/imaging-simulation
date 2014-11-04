@@ -85,9 +85,9 @@ def parse_results(taskn):
         return
     inp,outp = inout_paths[taskn]
 
-    if not os.path.exists('temp'):
-        os.mkdir('temp')
-    dw = csv.DictWriter(open('./temp/temp_%i.csv'%taskn,'w'),fieldnames=['input','output','pct_matched','n_cells','noise_mag','timing_offset_std'])
+    if not os.path.exists('/tmp/deverett'):
+        os.makedirs('/tmp/deverett')
+    dw = csv.DictWriter(open('/tmp/deverett/temp_%i.csv'%taskn,'w'),fieldnames=['input','output','pct_matched','n_cells','noise_mag','timing_offset_std'])
     dw.writeheader()
 
     res = Result(inp, outp)
@@ -101,16 +101,16 @@ def parse_results(taskn):
     dw.writerow(dic)
 
 def merge_results():
-    dw = csv.DictWriter(open('./results.csv','w'),fieldnames=['input','output','pct_matched','n_cells','noise_mag','timing_offset_std'])
+    dw = csv.DictWriter(open(pjoin(sim_dir,'comparison.csv'),'w'),fieldnames=['input','output','pct_matched','n_cells','noise_mag','timing_offset_std'])
     dw.writeheader()
 
-    for f in sorted(os.listdir('temp')):
-        dr = csv.DictReader(open(pjoin('temp',f),'r'))
+    for f in sorted(os.listdir('/tmp/deverett')):
+        dr = csv.DictReader(open(pjoin('/tmp/deverett',f),'r'))
         for rec in dr:
             dw.writerow(rec)
-        os.remove(pjoin('temp',f))
+        os.remove(pjoin('/tmp/deverett',f))
     time.sleep(0.1)
-    os.rmdir('temp')
+    os.rmdir('/tmp/deverett')
 
 def count_available():
     sims_dirs = [pjoin(sim_dir,d) for d in os.listdir(sim_dir) if os.path.isdir(pjoin(sim_dir,d))]

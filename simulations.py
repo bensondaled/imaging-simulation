@@ -25,6 +25,7 @@ class Simulation(object):
 
     def __init__(self, fname='noname'):
         self.fname = fname
+        self.has_saved = False
 
         # time and space
         self.Ds = 1.1 #micrometers/pixel
@@ -222,11 +223,21 @@ class Simulation(object):
         seq = seq / maxs
         return seq
 
-    def save_mov(self, fmt='avi', dest=''):
-        if not os.path.exists(dest) and dest != '':
-            os.makedirs(dest)
+    def save_mov(self, fmt='avi', dest='.'):
+        if not self.has_saved:
+            #must specify a unique new directory name for this output
+            if not os.path.exists(dest):
+                os.makedirs(dest)
+            sim_dir = os.path.join(dest,self.fname)
+            i = 1
+            while os.path.exists(sim_dir):
+                sim_dir = os.path.join(dest,self.fname,'-%i'%i)
+                i += 1
+            os.mkdir(sim_dir)
+            self.sim_dir = sim_dir
+            self.has_saved = True
         mov = self.mov
-        fname = os.path.join(dest,self.fname + '.' + fmt)
+        fname = os.path.join(self.sim_dir,self.fname + '.' + fmt)
         if fmt=='avi':
             vw = cv2.VideoWriter(fname, fourcc=cv2.cv.CV_FOURCC('m', 'p', '4', 'v'), fps=int(1./self.Ts), frameSize=tuple(self.image_size_final[::-1]))
             for fr in mov:
@@ -239,10 +250,20 @@ class Simulation(object):
             except:
                 raise Exception('No working module for tiff saving.')
 
-    def save_data(self, fmt='npy', dest=''):
-        if not os.path.exists(dest) and dest != '':
-            os.makedirs(dest)
-        fname = os.path.join(dest, self.fname)
+    def save_data(self, fmt='npy', dest='.'):
+        if not self.has_saved:
+            #must specify a unique new directory name for this output
+            if not os.path.exists(dest):
+                os.makedirs(dest)
+            sim_dir = os.path.join(dest,self.fname)
+            i = 1
+            while os.path.exists(sim_dir):
+                sim_dir = os.path.join(dest,self.fname,'-%i'%i)
+                i += 1
+            os.mkdir(sim_dir)
+            self.sim_dir = sim_dir
+            self.has_saved = True
+        fname = os.path.join(self.sim_dir, self.fname)
         params = {k:self.__dict__[k] for k in self.__dict__ if k not in ['cells','neuropil','t','mov','mov_nofilter','stim','mov_nojit','mov_filtered']}
         cells = [cell.get_dict() for cell in self.cells]
         npil = np.array([self.neuropil.get_dict()])
