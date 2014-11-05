@@ -1,1 +1,1 @@
-python compare.py parse $SGE_TASK_ID
+python analyze.py parse $SGE_TASK_ID

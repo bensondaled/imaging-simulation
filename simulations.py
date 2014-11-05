@@ -1,6 +1,8 @@
 """
 Notes.
 
+TODO: add gaussian noise on top of the biology before imaging noise
+
 -rise time of gcamp is considered constant as of now
 -when the stochastic parameters are implemented, often abs() is used, meaning they are no longer truly gaussian but half gaussian
 -clusters centers are constrained to within the final FOV, though cells can still end up outside. importantly, soma density is only a rough parameter. number of clusters inside FOV will be on average the number specified
@@ -48,38 +50,42 @@ class Simulation(object):
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
         self.ca_rest = 0.050 #micromolar
-        self.neuropil_density = 0.9 #neuropil probability at any given point
+        self.neuropil_density = 1.0 #neuropil probability at any given point
 
         # the imaging equipment
         self.imaging_background = 0.1
-        self.imaging_noise_lam = 3.0
-        self.imaging_noise_mag = 1.0 #when movie is 0-1.0
+        self.imaging_noise_lam = 3.0 #if shot
+        self.imaging_noise_mag = 1.05 #if shot, when movie is 0-1.0
+        self.imaging_noise = [0.0, 0.2] #if gaussian, when movie is 0-1.0
         self.imaging_filter_sigma = [0., 0.2, 0.2]
+        self.noise_type = 'gauss' #shot or gauss
 
         # indicator
         self.tau_gcamp_rise = 0.084 #s (58ms t1/2 rise dvidied by ln2)
         self.tau_gcamp_decay = 0.102 #s (71ms t1/2 decay divided by ln2)
         self.gcamp_kd = 0.29 #micromolar
-        self.gcamp_nh = 2.46 #hill coef
+        self.gcamp_nh = 2.7 #hill coef
+        self.gcamp_rf = 29.
 
         # the biological event
         self.tau_ca_decay = [0.250, 0.050] #s
         self.ca_per_ap = 0.010 #micromolar
         self.stim_onset = 0.5 #s
-        self.stim_f = 300. #spikes/s
-        self.stim_dur = [0.500, 0.200] #s
+        self.stim_f = 200. #spikes/s
+        self.stim_dur = [0.100, 0.100] #s
         self.stim_gap = 1.5 #s
         self.stim_n = 30
-        self.stim_durs = np.array([self.stim_dur[0] for _ in xrange(self.stim_n)])#rand.normal(*self.stim_dur, size=self.stim_n)
+        self.stim_durs = np.array([self.stim_dur[0] for _ in xrange(self.stim_n)])#rand.normal(*self.stim_dur, size=self.stim_n) #this is for random durations
         self.duration = (self.stim_onset + self.stim_gap) * self.stim_n + np.sum(self.stim_durs) #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
         # these are working on values from 0-1:
         self.cell_magnitude = [1.0, 0.01] #magnitude of cells' *ca* response amplitudes relative to each other
         self.cell_baseline = [1.0, 0.01] #magnitude of cells' *ca* baseline values relative to each other. This is a multiplier to the bseline Ca
-        self.cell_gain = [1.0, 0.01] #note that this refers to indicator while magnitude and baseline refer to calcium. it's the baseline *and* magnitude of a cell's fluorescent response relative to other cells (i.e. a multiplying factor for converting ca to f)
-        self.cell_expression = [0.0, 100.0] #this value also refers to indicator and not ca. Importantly, it represents the proportion of the global *resting fluorescence* level that will be *added* to the fluorescence
-        self.neuropil_mag = 0.95 #as a fraction of average cell magnitude
+        self.cell_expression = [1.0, 5.00] #note that this refers to indicator while magnitude and baseline refer to calcium. it's the baseline *and* magnitude of a cell's fluorescent response relative to other cells (i.e. a multiplying factor for converting ca to f). interpreted as expression
+        self.cell_f_strength = [0.0, 0.000001] #this is an additive offset for fluorescence, for instance, if a cell is just generally brighter because it's closer to the surface
+        self.neuropil_mag = 1.5 #as a fraction of average cell magnitude
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
+        self.neuropil_expression = 2.0 #as a multiple of the "avg" (but not truly avg) cell_expression
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
         self.npil_ca_dist_noise = [-1, 2.5]
     @property
@@ -91,7 +97,8 @@ class Simulation(object):
         self.soma_density = self._soma_density_field / np.product(self.field_size_final) #cells/micrometer_squared
     def ca2f(self, ca):
         def response_curve(c): 
-            return (c**self.gcamp_nh)/(self.gcamp_kd + c**self.gcamp_nh)
+            fmin = self.gcamp_rf / (self.gcamp_rf - 1)
+            return fmin + self.gcamp_rf*(c**self.gcamp_nh)/(self.gcamp_kd + c**self.gcamp_nh)
         #convert a calcium concentration to an ideal fluorescence maximal value
         f = response_curve(ca)
         return f
@@ -130,7 +137,6 @@ class Simulation(object):
     def generate_fluo(self, ca, gain=1.0, fbl=0.0):
         t = self.t
         f_ideal = np.zeros_like(ca)
-        fbsl = fbl*self.ca2f(self.ca_rest)
         f_ideal[0] = self.ca2f(ca[0])
         f = np.zeros_like(f_ideal)
         f[0] = f_ideal[0]
@@ -143,8 +149,7 @@ class Simulation(object):
                 f[idx] = max(f[idx-1] + dt/self.tau_gcamp_decay * (f_ideal[idx-1] - f[idx-1]), f_ideal[idx-1])
             else: #not rising or decaying
                 f[idx] = f[idx-1]
-
-        return fbsl + f * gain
+        return fbl + f * gain
 
     def generate_cells(self):
         n_clusters = np.rint(self.soma_clusters_density * np.product(self.field_size))
@@ -174,8 +179,8 @@ class Simulation(object):
                 cell.mag = abs(rand.normal(*self.cell_magnitude))
                 cell.baseline = abs(rand.normal(*self.cell_baseline)) #will be the multiplying factor to the standard ca baseline
                 cell.tau_cdecay = max(1.e-10, rand.normal(*self.tau_ca_decay))
-                cell.gain = abs(rand.normal(*self.cell_gain))
                 cell.expression = abs(rand.normal(*self.cell_expression))
+                cell.f_strength = abs(rand.normal(*self.cell_f_strength))
                 cell.offset = rand.normal(*self.cell_timing_offset)
                 cell.compute_mask()
                 cells.append(cell)
@@ -183,7 +188,10 @@ class Simulation(object):
         return cells
     def generate_neuropil(self):
         npil = Cell(self)
-        npil.mask = rand.random(self.image_size)<self.neuropil_density
+        available_pts = np.argwhere(np.logical_not(np.sum([c.mask_with_nucleus for c in self.cells],axis=0)))
+        npil.mask = np.zeros(self.image_size, dtype=bool)
+        for ap in available_pts:
+            npil.mask[ap[0],ap[1]] = bool(rand.random()<self.neuropil_density)
         idx0,idx1 = self.image_placement
         npil.mask_im = npil.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
         npil.tau_cdecay = max(1.e-10,rand.normal(*self.tau_ca_decay))
@@ -231,7 +239,8 @@ class Simulation(object):
             sim_dir = os.path.join(dest,self.fname)
             i = 1
             while os.path.exists(sim_dir):
-                sim_dir = os.path.join(dest,self.fname,'-%i'%i)
+                sim_dir = os.path.join(dest,self.fname+'_%i'%i)
+                print sim_dir
                 i += 1
             os.mkdir(sim_dir)
             self.sim_dir = sim_dir
@@ -285,12 +294,17 @@ class Simulation(object):
         for fidx,frame in enumerate(self.mov_nojit):
             sn = rand.choice([-1., 1.], size=2)
             jmag = rand.choice([0.,1.],size=2)# rand.poisson(jitter_lambda, size=2)
-            jity,jitx = sn*jmag
+            jity,jitx = 0,0 #sn*jmag
             mov[fidx,:,:] = frame[idx0[0]+jity:idx1[0]+jity, idx0[1]+jitx:idx1[1]+jitx]
         self.mov_nofilter = mov
-        self.mov_filtered = gaussian_filter(mov, self.imaging_filter_sigma)
-        noise = rand.poisson(self.imaging_noise_lam, size=mov.shape)
-        noise = self.imaging_noise_mag * noise/np.max(noise)
+        self.mov_filtered = self.normalize(gaussian_filter(mov, self.imaging_filter_sigma))
+        shot_noise = rand.poisson(self.imaging_noise_lam, size=mov.shape) #shot
+        shot_noise = self.imaging_noise_mag * noise/np.max(noise) #shot
+        gauss_noise = rand.normal(*self.imaging_noise, size=mov.shape) # gaussian
+        if self.noise_type == 'shot':
+            noise = shot_noise
+        elif self.noise_type == 'gauss':
+            noise = gauss_noise
         self.mov = self.mov_filtered + noise
 
         return self.mov
@@ -312,12 +326,12 @@ class Simulation(object):
         for cell in self.cells:
             cell.stim = self.generate_stim(cell.offset)
             cell.ca = self.generate_ca(cell.stim, cell.tau_cdecay, cell.mag, cell.baseline)
-            cell.fluo = self.generate_fluo(cell.ca, cell.gain, cell.expression)
+            cell.fluo = self.generate_fluo(cell.ca, cell.expression, cell.f_strength)
         
         self.stim = self.generate_stim(0.)
         self.neuropil.stim = self.stim
         self.neuropil.ca = self.generate_ca(self.stim, self.neuropil.tau_cdecay, self.neuropil_mag, self.neuropil_baseline)
-        self.neuropil.fluo = self.generate_fluo(self.neuropil.ca)
+        self.neuropil.fluo = self.generate_fluo(self.neuropil.ca, self.neuropil_expression*self.cell_expression[0])
         
         seq = self.construct(seq,self.cells,self.neuropil)
         
@@ -381,6 +395,6 @@ class Cell(object):
 if __name__ == '__main__':
     sim = Simulation('test_mov')
     sim.generate_movie()
-    #sim.save_mov(fmt='tif',dest='output')
-    #sim.save_data(fmt='npy', dest='output')
-    sim.save_data(fmt='mat', dest='output')
+    sim.save_mov(fmt='tif')
+    sim.save_data(fmt='npy', dest='.')
+    sim.save_data(fmt='mat', dest='.')

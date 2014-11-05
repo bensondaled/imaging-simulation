@@ -14,8 +14,8 @@ File Index:
     * tifffile.pyc: a necessary module for saving tiffs
 
 **Results Analysis**
-    * compare.py: reads in simulation data & deconvolution results, and synthesizes them into simpler outputs. arguments:
+    * analyze.py: reads in simulation data & deconvolution results, and synthesizes them into simpler outputs. arguments:
         'count': will display the number of available comparisons for parsing
         'parse n': will run the comparison for the nth available file and save it in temp 
         'merge': will merge the results of multiple parses located in temp
-    * job_analysis: a simple bash script to run compare.py on the cluster
+    * job_analysis: a simple bash script to run analyze.py on the cluster

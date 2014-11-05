@@ -7,7 +7,7 @@ import os
 task_id = sys.argv[1]
 task_id = int(task_id)-1
 
-dest = '/jukebox/wang/deverett/simulations/set_1'
+dest = '/jukebox/wang/deverett/simulations/batch_3'
 
 with open('generation_params.json','r') as f:
     params = json.loads(f.read())
@@ -21,7 +21,7 @@ varr = vars[var_n]
 val_list = vals[var_n]
 val = val_list[val_n]
     
-name = "%02d_%03d"%(var_n,val_n)
+name = "%02d_%03d"%(var_n+1,val_n+1)
 sim = Simulation(name)
 setattr(sim,varr,val)
 sim.generate_movie()
