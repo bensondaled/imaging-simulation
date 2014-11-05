@@ -45,7 +45,7 @@ class Simulation(object):
         self.soma_circularity_noise_world = [0., 0.15] #micrometers
         self.soma_circularity_noise = [ss/self.Ds for ss in self.soma_circularity_noise_world] #pixels
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
-        self.soma_density_field = 40 #cells per *final* frame area
+        self.soma_density_field = 45 #cells per *final* frame area
         self.soma_clusters_density_field = 6 #*expected* cluster per *final* frame area
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
@@ -299,7 +299,7 @@ class Simulation(object):
         self.mov_nofilter = mov
         self.mov_filtered = self.normalize(gaussian_filter(mov, self.imaging_filter_sigma))
         shot_noise = rand.poisson(self.imaging_noise_lam, size=mov.shape) #shot
-        shot_noise = self.imaging_noise_mag * noise/np.max(noise) #shot
+        shot_noise = self.imaging_noise_mag * shot_noise/np.max(shot_noise) #shot
         gauss_noise = rand.normal(*self.imaging_noise, size=mov.shape) # gaussian
         if self.noise_type == 'shot':
             noise = shot_noise
