@@ -4,14 +4,23 @@ import numpy as np
 n_per_variable = 40 #before replicates
 replicates = 3
 
-variables = ['neuropil_mag']
-values = [np.linspace(0.01,2.2,n_per_variable)]
-
+#batch1:
 #variables = ['soma_density_field','imaging_noise_mag','cell_timing_offset']
 #values = [np.linspace(10,200,n_per_variable).astype(int), np.linspace(0.01,4.0,n_per_variable), np.linspace(0.00001,0.800,n_per_variable)]
-#values[2] = [[0.050,i] for i in values[2]]
+#values[2] = [[0.050,i] for i in values[2]] #comes after repeat
+
+#batch2,3:
+#variables = ['neuropil_mag']
+#values = [np.linspace(0.01,2.2,n_per_variable)]
+
+#batch4:
+variables = ['imaging_noise']
+values = [np.linspace(0.001,2.0,n_per_variable)]
 
 values = [list(np.repeat(i,replicates)) for i in values]
+
+#batch4: (more)
+values[0] = [[0.0,i] for i in values[0]] #comes after repeat
 
 data = {}
 data['variables'] = variables

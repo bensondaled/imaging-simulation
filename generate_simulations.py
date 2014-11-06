@@ -7,7 +7,7 @@ import os
 task_id = sys.argv[1]
 task_id = int(task_id)-1
 
-dest = '/jukebox/wang/deverett/simulations/batch_3'
+dest = '/jukebox/wang/deverett/simulations/batch_4'
 
 with open('generation_params.json','r') as f:
     params = json.loads(f.read())

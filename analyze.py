@@ -9,9 +9,17 @@ from scipy.io import savemat,loadmat
 rand = np.random
 pjoin = os.path.join
 
-sim_dir = '/jukebox/wang/deverett/simulations/batch_2'
-out_dir = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/'
+sim_dir = '/jukebox/wang/deverett/simulations/batch_3'
+out_dir = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/batch_3_ANALYZED'
 temp_dir = '/jukebox/wang/deverett/tmp'
+
+
+
+def cat(a,ty):
+    if type(a[0]) in [np.ndarray, list]:
+        return np.concatenate(a).astype(ty)
+    else:
+        return np.array(a).astype(ty)
 
 def overlap(mask1,mask2,percent_of=False):
     if not np.sum(mask1*mask2):
@@ -23,21 +31,38 @@ def overlap(mask1,mask2,percent_of=False):
         ol /= np.sum(mask2)
     return ol
 
+def distance(mask1, mask2):
+    m1c = np.mean(np.argwhere(mask1), axis=0)
+    m2c = np.mean(np.argwhere(mask2), axis=0)
+    return np.sqrt(np.sum((m1c-m2c)**2))
+
 def corr(sig1,sig2,norm=True):
-    if len(sig1) == 2*len(sig2):
-        sig1 = sig1[::2]
-    elif len(sig2) == 2*len(sig1):
-        sig2 = sig2[::2]
+    if len(sig1) / len(sig2) == 2:
+        if len(sig1)%len(sig2):
+            sig1 = sig1[1::2]
+        else:
+            sig1 = sig1[::2]
+    elif len(sig2) / len(sig1) == 2:
+        if len(sig2)%len(sig1):
+            sig2 = sig2[1::2]
+        else:
+            sig2 = sig2[::2]
     if norm:
         sig1 = (sig1-np.mean(sig1))/np.std(sig1)
         sig2 = (sig2-np.mean(sig2))/np.std(sig2)
     return np.correlate(sig1,sig2,'full')
 
 def variance(sig1,sig2,norm=True):
-    if len(sig1) == 2*len(sig2):
-        sig1 = sig1[::2]
-    elif len(sig2) == 2*len(sig1):
-        sig2 = sig2[::2]
+    if len(sig1) / len(sig2) == 2:
+        if len(sig1)%len(sig2):
+            sig1 = sig1[1::2]
+        else:
+            sig1 = sig1[::2]
+    elif len(sig2) / len(sig1) == 2:
+        if len(sig2)%len(sig1):
+            sig2 = sig2[1::2]
+        else:
+            sig2 = sig2[::2]
     if norm:
         sig1 = (sig1-np.mean(sig1))/np.std(sig1)
         sig2 = (sig2-np.mean(sig2))/np.std(sig2)
@@ -48,6 +73,7 @@ class Result(object):
     IN = 1 # idx, not object
     PERC_OUT = 2
     PERC_IN = 3
+    DIST = 4
     def __init__(self, in_path, out_path):
         self.in_path = in_path
         self.out_path_dir = out_path
@@ -59,21 +85,42 @@ class Result(object):
         self.inn_params = np.atleast_1d(self.inn['params'])[0]
         self.in_cells = self.inn['cells']
         self.in_masks = np.array([c['mask_im'] for c in self.in_cells])
+        self.in_masks_infov = np.array([c['mask_im'] for c in self.in_cells if c['was_in_fov']])
         self.out_masks = self.out['A'].toarray()
         n_outmasks = self.out_masks.shape[-1]
         self.out_masks = np.reshape(self.out_masks, np.append(self.in_masks.shape[1:],n_outmasks), order='F')
         self.out_masks = np.rollaxis(self.out_masks,2,0)
         self.out_masks[self.out_masks>0] = 1.0
 
-        self.matches = self.match_cells()
+        self.matches_all = self.match_cells()
+        self.matches = np.array([m for m in self.matches_all if m[self.PERC_IN]>0])
+        
+        self.in_cell_neighbors=np.array([self.n_neighbors(c) for c in self.in_cells] )
+        self.in_cell_match_quality = [self.match_quality(idx) for idx,c in enumerate(self.in_cells)]
+        self.out_cell_max_ca = np.max(self.out['C'],axis=1)
+        self.out_max_npil = np.max(self.out['f'])
+        self.out_psn = self.out['P'][0][0][0].reshape(self.in_masks.shape[1:])
 
-        # cell match stats
-        self.n_in_cells_matched = len(np.unique(self.matches[:,self.IN])) #percentage of input cells 'found'
-        self.percent_in_cells_matched = float(self.n_in_cells_matched)/float(len(self.in_cells))
-        self.avg_percent_in_cell_overlap = np.mean(self.matches[:,self.PERC_IN]) #note: this considers multiple output cells mapped onto one input cell. may want to constrain
-
-        # trace match stats
+        self.n_in_cells_matched = len(np.unique(self.matches[:,self.IN])) 
+        self.percent_in_cells_matched = float(self.n_in_cells_matched)/float(len(self.in_masks_infov))
         self.variances = [variance(self.out['C'][m[self.OUT]], self.in_cells[m[self.IN]]['ca']) for m in self.matches]
+        
+    def n_neighbors(self, c):
+        th = 9
+        n = 0
+        for cp in self.in_cells:
+            if distance(c['mask_im'], cp['mask_im']) < th:
+                n+=1
+        return n
+    
+    def match_quality(self, cidx):
+        maxdist = np.max(self.matches[:,self.DIST])
+        matches = [m for m in self.matches if m[self.IN]==cidx]
+        match_quals = [m[self.PERC_OUT]*m[self.PERC_IN]*(1-(m[self.DIST]/maxdist)) for m in matches]
+        if not match_quals:
+            return 0.0
+        else:
+            return match_quals[np.argmax(match_quals)]
 
     def match_cells(self):
         """
@@ -85,14 +132,15 @@ class Result(object):
             in_match_idx = np.argmax([overlap(om,im,percent_of=1) for im in self.in_masks])
             perc_out = overlap(om, self.in_masks[in_match_idx], percent_of=1)
             perc_in = overlap(om, self.in_masks[in_match_idx], percent_of=2)
-            matches.append([oi, in_match_idx, perc_out, perc_in])
+            dist = distance(om, self.in_masks[in_match_idx])
+            matches.append([oi, in_match_idx, perc_out, perc_in, dist])
         return np.array(matches)
 
     def display_cells(self):
         pl.imshow(np.sum(self.in_masks, axis=0))
         p = True
         while True:
-            p = pl.ginput(1)[0]
+            p = pl.ginput(1,timeout=0)[0]
             p = np.array(p).astype(int)
             if not np.any(p):
                 break
@@ -102,16 +150,18 @@ class Result(object):
                     print
                     print "Cell: %i"%cidx
                     print "Offset: %0.3f"%c['offset']
-                    print "Gain: %0.3f"%c['gain']
                     print "Expression: %0.3f"%c['expression']
                     print "Cell Magnitude: %0.3f"%c['mag']
                     print "Baseline: %0.3f"%c['baseline']
-                    print "Center: " + str(c['center_im'])
+                    print "Center: " + str(c['center_im_'])
+                    print "Neighbors: %i" % self.in_cell_neighbors[cidx]
+                    print "Match Quality: %0.3f" % self.in_cell_match_quality[cidx]
+                    print "Found: " + str(cidx in self.matches[:,self.IN])
 
 def parse_results(taskn):
     sims_dirs = [pjoin(sim_dir,d) for d in os.listdir(sim_dir) if os.path.isdir(pjoin(sim_dir,d))]
     in_paths = [pjoin(sd,f) for sd in sims_dirs for f in  os.listdir(sd) if '.npz' in f]
-    out_paths = [pjoin(out_dir,subdir,simdir,simdir,simdir[:2]) for subdir in [dd for dd in os.listdir(out_dir) if os.path.isdir(pjoin(out_dir,dd))] for simdir in os.listdir(pjoin(out_dir,subdir)) if re.match('^[0-9]{2}_[0-9]{3}$',simdir)]
+    out_paths = get_outpaths()
     out_nums = [op.split('/')[-3] for op in out_paths]
     inout_paths = []
     for ip in sorted(in_paths):
@@ -125,9 +175,7 @@ def parse_results(taskn):
 
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
-    outfile = open(pjoin('/jukebox/wang/deverett/tmp','temp_%i.csv'%taskn),'w')
-    dw = csv.DictWriter(outfile,fieldnames=['input','output','pct_matched','avg_variance','n_cells','noise_mag','timing_offset_std'])
-    dw.writeheader()
+    outname = pjoin('/jukebox/wang/deverett/tmp','temp_%i'%taskn)
 
     res = Result(inp, outp)
     dic = {}
@@ -138,32 +186,46 @@ def parse_results(taskn):
     dic['n_cells'] = res.inn_params['n_cells_in_fov']
     dic['noise_mag'] = res.inn_params['imaging_noise_mag']
     dic['timing_offset_std'] = res.inn_params['cell_timing_offset'][1]
-    dw.writerow(dic)
-    outfile.close()
+    dic['neuropil_mag'] = res.inn_params['neuropil_mag']
+    dic['in_cell_expressions'] = [c['expression'] for c in res.inn['cells']]
+    dic['in_cell_matched'] = [cidx in res.matches[:,res.IN] for cidx in xrange(len(res.inn['cells']))]
+    dic['in_cell_neighbors'] = res.in_cell_neighbors
+    dic['in_cell_match_quality'] = res.in_cell_match_quality
+    dic['out_cell_max_ca'] = res.out_cell_max_ca
+    dic['out_max_npil'] = res.out_max_npil
+    dic['avg_out_psn'] = np.mean(res.out_psn)
+    dic['std_out_psn'] = np.std(res.out_psn)
+
+    np.save(outname, np.array([dic]))
 
 def merge_results():
-    dw = csv.DictWriter(open(pjoin(sim_dir,'comparison.csv'),'w'),fieldnames=['input','output','pct_matched','avg_variance','n_cells','noise_mag','timing_offset_std'])
-    dw.writeheader()
+    outname = pjoin(sim_dir,'comparison.npy')
+    if os.path.exists(outname):
+        os.remove(outname)
+    out_all = []
 
     for f in sorted(os.listdir(temp_dir)):
-        dr = csv.DictReader(open(pjoin(temp_dir,f),'r'))
-        for rec in dr:
-            dw.writerow(rec)
+        data = np.load(pjoin(temp_dir,f))
+        for d in data:
+            out_all.append(np.array([d]))
         os.remove(pjoin(temp_dir,f))
     for f in os.listdir(temp_dir):
         if f[0]=='.':
             os.remove(pjoin(temp_dir,f))
     os.rmdir(temp_dir)
+    np.save(outname, out_all)
+
+def get_outpaths():
+    return [pjoin(out_dir,subdir,simdir,simdir[:2]) for subdir in [dd for dd in os.listdir(out_dir) if os.path.isdir(pjoin(out_dir,dd))] for simdir in os.listdir(pjoin(out_dir,subdir)) if re.match('^[0-9]{2}_[0-9]{3}$',simdir)]
 
 def count_available():
     sims_dirs = [pjoin(sim_dir,d) for d in os.listdir(sim_dir) if os.path.isdir(pjoin(sim_dir,d))]
     sims_dirs = [pjoin(sim_dir,d) for d in os.listdir(sim_dir) if os.path.isdir(pjoin(sim_dir,d))]
     in_paths = [pjoin(sd,f) for sd in sims_dirs for f in  os.listdir(sd) if '.npz' in f]
     in_paths = [pjoin(sd,f) for sd in sims_dirs for f in  os.listdir(sd) if '.npz' in f]
-    out_paths = [pjoin(out_dir,subdir,simdir,simdir,simdir[:2]) for subdir in [dd for dd in os.listdir(out_dir) if os.path.isdir(pjoin(out_dir,dd))] for simdir in os.listdir(pjoin(out_dir,subdir)) if re.match('^[0-9]{2}_[0-9]{3}$',simdir)]
+    out_paths = get_outpaths()
     out_nums = [op.split('/')[-3] for op in out_paths]
     inout_paths = []
-    print np.unique(out_nums)
     for ip in sorted(in_paths):
         num = os.path.splitext(os.path.split(ip)[-1])[0]
         if num in out_nums:
@@ -173,6 +235,91 @@ def count_available():
     print "Available output (deconvolution) files:\t\t\t%i"%(len(out_paths)) 
     print "Available pairs to analyze:\t\t\t\t%i"%(len(inout_paths)) 
 
+def figure1():
+    #neuropil
+    data = np.load(pjoin(sim_dir,'comparison.npy'))
+    data = np.array([d[0] for d in data])
+    data = data[np.argsort([d['input'] for d in data])]
+    
+    MA = 0
+    EX = 1
+    NP = 2
+    data_ma = [d['in_cell_matched'] for d in data]
+    data_ex = [d['in_cell_expressions'] for d in data]
+    data_np = [d['neuropil_mag'] for d in data]
+    data_all = []
+    for dm,de,dn in zip(data_ma,data_ex,data_np):
+        assert len(dm) == len(de)
+        for dmm,dee in zip(dm,de):
+            data_all.append([int(dmm), float(dee), float(dn)])
+    data_all = np.array(data_all)
+    data_no = data_all[np.squeeze(np.argwhere(data_all[:,MA]==0)),:]
+    data_yes = data_all[np.squeeze(np.argwhere(data_all[:,MA]==1)),:]
+
+    #bin means
+    np_vals = np.unique(data_all[:,NP])
+    data_no = np.array([data_no[np.argwhere(data_no[:,NP]==nv)] for nv in np_vals])
+    data_yes = np.array([data_yes[np.argwhere(data_yes[:,NP]==nv)] for nv in np_vals])
+    data_no_mean = np.array([np.mean(i) for i in data_no])
+    data_yes_mean = np.array([np.mean(i) for i in data_yes])
+    data_no_std = np.array([np.std(i) for i in data_no])
+    data_yes_std = np.array([np.std(i) for i in data_yes])
+    data_no_sem = np.array([np.std(i)/np.sqrt(len(i)) for i in data_no])
+    data_yes_sem = np.array([np.std(i)/np.sqrt(len(i)) for i in data_yes])
+
+    pl.plot(np_vals,data_no_mean,marker='o',markersize=7,label='Unfound Cells',linestyle='None', color='r')
+    pl.plot(np_vals,data_yes_mean,marker='o',markersize=7,label='Found Cells',linestyle='None', color='g')
+    pl.errorbar(np_vals,data_no_mean,yerr=data_no_sem,fmt=None,ecolor='k')
+    pl.errorbar(np_vals,data_yes_mean, yerr=data_yes_sem,fmt=None,ecolor='k')
+    pl.legend(loc='upper left',numpoints=1)
+    
+    #next
+    data_np_full = cat(data_np, float)
+    pct_matched = cat([d['pct_matched'] for d in data], float)
+    
+    pl.figure(2)
+    idxs = np.argsort(data_np_full)
+    pl.scatter(data_np_full[idxs],pct_matched[idxs])
+
+
+    
+    pl.figure(3)
+    #make the curve of yes/no matched vs expression level
+    data_ex = cat(data_ex, float)
+    rang = np.linspace(data_ex.min(),data_ex.max(),50)
+    data_ma = cat(data_ma, int)
+    ma_binned = []
+    for r1,r0 in zip(rang[1:],rang[:-1]):
+        ma_binned.append(np.mean(data_ma[np.argwhere(np.logical_and(data_ex<r1, data_ex>=r0))]))
+    ma_binned.append(np.mean(data_ma[np.argwhere(data_ex>rang[-1])]))
+    pl.scatter(rang,ma_binned) 
+    
+    #from sims:
+    CA = 0
+    NP = 1
+    data_out_ca = [d['out_cell_max_ca'] for d in data]
+    data_out_npil = [d['out_max_npil'] for d in data]
+    data_out = []
+    for dc,dn in zip(data_out_ca, data_out_npil):
+        for dcc in dc:
+            data_out.append([float(dcc), float(dn)])
+    data_out = np.array(data_out)
+    np_vals = np.unique(data_out[:,NP])
+    data_out = np.array([data_out[np.argwhere(data_out[:,NP]==nv)] for nv in np_vals])
+    data_out_mean = np.array([np.mean(i) for i in data_out])
+    data_out_sem = np.array([np.std(i)/np.sqrt(len(i)) for i in data_out])
+    pl.figure(4)
+    pl.plot(np_vals,data_out_mean,marker='o',markersize=7,linestyle='None', color='k')
+    pl.errorbar(np_vals,data_out_mean,yerr=data_out_sem,fmt=None,ecolor='gray')
+
+    #noise p.sn
+    dd = cat([d['avg_out_psn'] for d in data],float)
+    pl.figure(5)
+    pl.plot(dd,'b*')
+    
+    return data_all
+
+    
 if __name__ == '__main__':
     option = sys.argv[1]
     if option == 'merge':
@@ -182,12 +329,19 @@ if __name__ == '__main__':
     elif option == 'parse':
         taskn = int(sys.argv[2])-1
         parse_results(taskn)
+    elif option == 'figure1':
+        data_all=figure1()
     elif option == 'play':
-        dr = csv.DictReader(open(pjoin(sim_dir,'comparison.csv'),'r'))
-        dr = list(dr)
-        pct_matched = np.array([d['pct_matched'] for d in dr])
-        n_cells = np.array([int(d['n_cells']) for d in dr])
-        timing_offset_std = np.array([float(d['timing_offset_std']) for d in dr])
-        noise_mag = np.array([float(d['noise_mag']) for d in dr])
-        idxs = np.argsort(n_cells)
-        pl.scatter(n_cells[idxs],pct_matched[idxs])
+        data = np.load(pjoin(sim_dir,'comparison.npy'))
+        data = np.array([d[0] for d in data])
+        data = data[np.argsort([d['input'] for d in data])]
+
+        xaxis = 'in_cell_expressions'
+        xtype = float
+        yaxis = 'in_cell_matched'
+        ytype = float
+        
+        datax = cat([d[xaxis] for d in data], xtype)
+        datay = cat([d[yaxis] for d in data], ytype)
+        idxs = np.argsort(datax)
+        pl.scatter(datax[idxs],datay[idxs])

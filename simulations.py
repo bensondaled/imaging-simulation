@@ -83,7 +83,7 @@ class Simulation(object):
         self.cell_baseline = [1.0, 0.01] #magnitude of cells' *ca* baseline values relative to each other. This is a multiplier to the bseline Ca
         self.cell_expression = [1.0, 5.00] #note that this refers to indicator while magnitude and baseline refer to calcium. it's the baseline *and* magnitude of a cell's fluorescent response relative to other cells (i.e. a multiplying factor for converting ca to f). interpreted as expression
         self.cell_f_strength = [0.0, 0.000001] #this is an additive offset for fluorescence, for instance, if a cell is just generally brighter because it's closer to the surface
-        self.neuropil_mag = 1.5 #as a fraction of average cell magnitude
+        self.neuropil_mag = 1.0 #as a fraction of average cell magnitude
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
         self.neuropil_expression = 2.0 #as a multiple of the "avg" (but not truly avg) cell_expression
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
