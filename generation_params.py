@@ -14,13 +14,20 @@ replicates = 3
 #values = [np.linspace(0.01,2.2,n_per_variable)]
 
 #batch4:
-variables = ['imaging_noise']
-values = [np.linspace(0.001,2.0,n_per_variable)]
+#variables = ['imaging_noise']
+#values = [np.linspace(0.001,2.0,n_per_variable)]
+#batch4: (more)
+#values[0] = [[0.0,i] for i in values[0]] #comes after repeat
+
+#batch5:
+variables = ['cell_timing_offset']
+values = [np.linspace(0.0005,0.950)]
 
 values = [list(np.repeat(i,replicates)) for i in values]
 
-#batch4: (more)
-values[0] = [[0.0,i] for i in values[0]] #comes after repeat
+#batch5 (more):
+values[0] = [[0.050,i] for i in values[0]] #comes after repeat
+
 
 data = {}
 data['variables'] = variables

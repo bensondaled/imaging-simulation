@@ -185,9 +185,10 @@ def parse_results(taskn):
     dic['avg_variance'] = np.mean(res.variances)
     dic['n_cells'] = res.inn_params['n_cells_in_fov']
     dic['noise_mag'] = res.inn_params['imaging_noise_mag']
+    dic['noise'] = res.inn_params['imaging_noise']
     dic['timing_offset_std'] = res.inn_params['cell_timing_offset'][1]
     dic['neuropil_mag'] = res.inn_params['neuropil_mag']
-    dic['in_cell_expressions'] = [c['expression'] for c in res.inn['cells']]
+    dic['in_cell_expressions'] = [c['expression'] for c in res.in_cells]
     dic['in_cell_matched'] = [cidx in res.matches[:,res.IN] for cidx in xrange(len(res.inn['cells']))]
     dic['in_cell_neighbors'] = res.in_cell_neighbors
     dic['in_cell_match_quality'] = res.in_cell_match_quality
@@ -266,9 +267,13 @@ def figure1():
     data_yes_std = np.array([np.std(i) for i in data_yes])
     data_no_sem = np.array([np.std(i)/np.sqrt(len(i)) for i in data_no])
     data_yes_sem = np.array([np.std(i)/np.sqrt(len(i)) for i in data_yes])
+    mult = 180.
+    s_no = np.array([len(nn)/float(len(nn)+len(yy)) for nn,yy in zip(data_no,data_yes)])
+    s_yes = np.array([1-sn for sn in s_no])
+    s_no,s_yes = mult*np.array([s_no,s_yes])
 
-    pl.plot(np_vals,data_no_mean,marker='o',markersize=7,label='Unfound Cells',linestyle='None', color='r')
-    pl.plot(np_vals,data_yes_mean,marker='o',markersize=7,label='Found Cells',linestyle='None', color='g')
+    pl.scatter(np_vals,data_no_mean,marker='o',label='Unfound Cells', color='r', s=s_no)
+    pl.scatter(np_vals,data_yes_mean,marker='o',label='Found Cells', color='g',s=s_yes)
     pl.errorbar(np_vals,data_no_mean,yerr=data_no_sem,fmt=None,ecolor='k')
     pl.errorbar(np_vals,data_yes_mean, yerr=data_yes_sem,fmt=None,ecolor='k')
     pl.legend(loc='upper left',numpoints=1)
@@ -282,7 +287,6 @@ def figure1():
     pl.scatter(data_np_full[idxs],pct_matched[idxs])
 
 
-    
     pl.figure(3)
     #make the curve of yes/no matched vs expression level
     data_ex = cat(data_ex, float)
@@ -319,7 +323,6 @@ def figure1():
     
     return data_all
 
-    
 if __name__ == '__main__':
     option = sys.argv[1]
     if option == 'merge':
@@ -335,13 +338,29 @@ if __name__ == '__main__':
         data = np.load(pjoin(sim_dir,'comparison.npy'))
         data = np.array([d[0] for d in data])
         data = data[np.argsort([d['input'] for d in data])]
-
-        xaxis = 'in_cell_expressions'
+        
+        #batch4
+        data_ex = cat([d['in_cell_expressions'] for d in data],float)
+        idxs_filt = np.argwhere(data_ex>-1.)
+        data_ex_filt = data_ex[idxs_filt]
+        data_ma = cat([d['in_cell_matched'] for d in data],int)
+        data_ma_filt = np.squeeze(data_ma[idxs_filt])
+        data_noise = np.array([d['noise'][1] for d in data])
+        data_noise = np.repeat(data_noise, float(len(data_ma))/len(data_noise))
+        data_noise_filt = np.squeeze(data_noise[idxs_filt])
+        idxs = np.argsort(data_noise_filt) 
+        lims = [(i1,i2) for i1,i2 in zip(np.arange(0,len(idxs),100)[:-1],np.arange(0,len(idxs),100)[1:])]
+        data_ma_bin = [np.mean(data_ma_filt[idxs][i1:i2]) for i1,i2 in lims]
+        data_noise_bin = [np.mean(data_noise_filt[idxs][i1:i2]) for i1,i2 in lims]
+        pl.scatter(data_noise_bin, data_ma_bin)
+        
+        sys.exit(0)
+        xaxis = 'noise'
         xtype = float
-        yaxis = 'in_cell_matched'
+        yaxis = 'pct_matched'
         ytype = float
         
-        datax = cat([d[xaxis] for d in data], xtype)
+        datax = cat([d[xaxis][1] for d in data], xtype)
         datay = cat([d[yaxis] for d in data], ytype)
         idxs = np.argsort(datax)
         pl.scatter(datax[idxs],datay[idxs])
