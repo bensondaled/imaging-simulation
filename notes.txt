@@ -2,3 +2,4 @@ batch_1: varied n_cells, noise magnitude, cell timing offset
 batch_2: after fixing a few things, varied neuropil magnitude -- caused arpfit to break down
 batch_3: switched to gaussian noise, again varying neuropil magnitude
 batch_4: varied the level of gaussian noise
+batch_5: varied the timing
