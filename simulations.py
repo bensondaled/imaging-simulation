@@ -45,7 +45,7 @@ class Simulation(object):
         self.soma_circularity_noise_world = [0., 0.15] #micrometers
         self.soma_circularity_noise = [ss/self.Ds for ss in self.soma_circularity_noise_world] #pixels
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
-        self.soma_density_field = 45 #cells per *final* frame area
+        self.soma_density_field = 100 #cells per *final* frame area
         self.soma_clusters_density_field = 6 #*expected* cluster per *final* frame area
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius

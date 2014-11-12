@@ -5,12 +5,14 @@ import csv
 import numpy as np
 import os
 import sys
+from scipy.sparse import spdiags
 from scipy.io import savemat,loadmat
 rand = np.random
 pjoin = os.path.join
 
-sim_dir = '/jukebox/wang/deverett/simulations/batch_4'
-out_dir = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/batch_4_ANALYZED'
+batch = 3
+sim_dir = '/jukebox/wang/deverett/simulations/batch_%i'%(batch)
+out_dir = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/batch_%i_ANALYZED'%(batch)
 temp_dir = '/jukebox/wang/deverett/tmp'
 
 def cat(a,ty):
@@ -18,6 +20,12 @@ def cat(a,ty):
         return np.concatenate(a).astype(ty)
     else:
         return np.array(a).astype(ty)
+
+def normalize(s):
+    s = np.array(s)
+    s = s-s.min()
+    s = s/s.max()
+    return s
 
 def overlap(mask1,mask2,percent_of=False):
     if not np.sum(mask1*mask2):
@@ -34,7 +42,9 @@ def distance(mask1, mask2):
     m2c = np.mean(np.argwhere(mask2), axis=0)
     return np.sqrt(np.sum((m1c-m2c)**2))
 
-def corr(sig1,sig2,norm=True):
+def corr(sig1,sig2,norm=True,method=np.correlate):
+    sig1 = np.squeeze(sig1)
+    sig2 = np.squeeze(sig2)
     if len(sig1) / len(sig2) == 2:
         if len(sig1)%len(sig2):
             sig1 = sig1[1::2]
@@ -48,7 +58,10 @@ def corr(sig1,sig2,norm=True):
     if norm:
         sig1 = (sig1-np.mean(sig1))/np.std(sig1)
         sig2 = (sig2-np.mean(sig2))/np.std(sig2)
-    return np.correlate(sig1,sig2,'full')
+    if method == np.correlate:
+        return method(sig1,sig2,'full')
+    elif method == np.corrcoef:
+        return method(sig1,sig2)[0,1]
 
 def variance(sig1,sig2,norm=True):
     if len(sig1) / len(sig2) == 2:
@@ -72,6 +85,7 @@ class Result(object):
     PERC_OUT = 2
     PERC_IN = 3
     DIST = 4
+    CORR = 5
     def __init__(self, in_path, out_path):
         self.in_path = in_path
         self.out_path_dir = out_path
@@ -89,10 +103,15 @@ class Result(object):
         n_outmasks = self.out_masks.shape[-1]
         self.out_masks = np.reshape(self.out_masks, np.append(self.in_masks.shape[1:],n_outmasks), order='F')
         self.out_masks = np.rollaxis(self.out_masks,2,0)
+        self.out_energies = np.array([np.sum(m**2) for m in self.out_masks])
         self.out_masks[self.out_masks>0] = 1.0
 
-        self.matches_all = self.match_cells()
+        self.matches_all = np.array(self.match_cells())
         self.matches = np.array([m for m in self.matches_all if m[self.PERC_IN]>0])
+        self.best_match_in_perc = [[m[self.PERC_IN] for m in self.matches_all if m[self.IN]==ci] for ci in xrange(len(self.in_cells))]
+        self.best_match_in_perc = [np.max(m) if len(m) else 0 for m in self.best_match_in_perc]
+        self.best_match_in = [np.array([(self.out_energies[m[self.OUT]],m[self.OUT]) for m in self.matches_all if m[self.IN]==ci]) for ci in xrange(len(self.in_cells))]
+        self.best_match_in = [m[np.argmax(m[:,0])][1] if len(m) else -1 for m in self.best_match_in]
         
         self.in_cell_neighbors=np.array([self.n_neighbors(c) for c in self.in_cells] )
         self.in_cell_match_quality = [self.match_quality(idx) for idx,c in enumerate(self.in_cells)]
@@ -101,6 +120,12 @@ class Result(object):
         self.out_max_npil = np.max(self.out['f'])
         self.out_psn = self.out['P'][0][0][0].reshape(self.in_masks.shape[1:])
         self.deconv_psn = self.out['P'][0][0][0].reshape(self.in_masks.shape[1:])
+        
+        s = len(np.squeeze(self.deconv_f))
+        self.pg = np.squeeze(self.out['P']['g'][0][0])
+        self.out_G = spdiags(np.ones(s)*self.pg, np.array([-1]), s, s).toarray() #removed negative from self.pg
+        self.out_G[0,0] = 0
+        self.deconv_matrix = self.out['C'].dot(self.out_G.T)
 
         self.n_in_cells_matched = len(np.unique(self.matches[:,self.IN])) 
         self.percent_in_cells_matched = float(self.n_in_cells_matched)/float(len(self.in_masks_infov))
@@ -113,54 +138,72 @@ class Result(object):
 
     def get_input_cell_summaries(self):
         cell_dtype = np.dtype([ ('input_path', 'a%i'%(len(self.in_path))),\
-                                ('output_path', 'a%i'%(len(self.out_path))),\
+                                ('output_path', 'a%i'%(len(self.out_path_dir))),\
+                                ('idx', np.int32),\
                                 ('expression', np.float32),\
                                 ('offset', np.float32),\
                                 ('matched', np.bool),\
+                                ('best_match_in_perc', np.float32),\
+                                ('best_match', np.float32),\
+                                ('ca', np.float64, len(self.inn['cells'][0]['ca'])),\
+                                ('f', np.float64, len(self.inn['cells'][0]['fluo'])),\
                                 ('sim_npil_mag', np.float32),\
                                 ('sim_noise_g_std', np.float32),\
                                 ('sim_noise_sh_mag', np.float32),\
-                                ('sim_n_cells', np.int8),\
+                                ('sim_cell_timing_offset', np.float32),\
+                                ('sim_n_cells', np.int32),\
                               ])
         cells = np.zeros(len(self.inn['cells']), dtype=cell_dtype)
         for ci,c in enumerate(self.inn['cells']):
             cells[ci]['input_path'] = self.in_path
-            cells[ci]['output_path'] = self.out_path
+            cells[ci]['output_path'] = self.out_path_dir
+            cells[ci]['idx'] = ci
             cells[ci]['expression'] = float(c['expression'])
             cells[ci]['offset'] = float(c['offset'])
             cells[ci]['matched'] = ci in np.unique(self.matches[:,self.IN])
+            cells[ci]['best_match_in_perc'] = self.best_match_in_perc[ci] #of all deconv cells mapped to this cell, what was the overlap of the one that overlapped most
+            cells[ci]['best_match'] = self.best_match_in[ci] #of all deconv cells mapped to this cell, which one had highest energy?
+            cells[ci]['ca'][:] = c['ca']
+            cells[ci]['f'][:] = c['fluo']
             cells[ci]['sim_npil_mag'] = float(self.inn_params['neuropil_mag'])
             cells[ci]['sim_noise_g_std'] = float(self.inn_params['imaging_noise'][1])
             cells[ci]['sim_noise_sh_mag'] = float(self.inn_params['imaging_noise_mag'])
+            cells[ci]['sim_cell_timing_offset'] = float(self.inn_params['cell_timing_offset'][1])
             cells[ci]['sim_n_cells'] = int(self.inn_params['n_cells_in_fov'])
         return cells
     def get_output_cell_summaries(self):
         cell_dtype = np.dtype([ ('input_path', 'a%i'%(len(self.in_path))),\
-                                ('output_path', 'a%i'%(len(self.out_path))),\
+                                ('output_path', 'a%i'%(len(self.out_path_dir))),\
+                                ('idx', np.int32),\
                                 ('input_match_idx', np.int8),\
                                 ('match_perc_in', np.float32),\
                                 ('match_perc_out', np.float32),\
+                                ('match_corrcoef', np.float32),\
                                 ('C', np.float32, self.out['C'].shape[1]),\
                                 ('deconv_f', np.float32, self.deconv_f.shape),\
                                 ('deconv_mean_psn', np.float32),\
                                 ('sim_npil_mag', np.float32),\
                                 ('sim_noise_g_std', np.float32),\
                                 ('sim_noise_sh_mag', np.float32),\
-                                ('sim_n_cells', np.int8),\
+                                ('sim_cell_timing_offset', np.float32),\
+                                ('sim_n_cells', np.int32),\
                               ])
         cells = np.zeros(len(self.out_masks), dtype=cell_dtype)
         for ci in xrange(len(self.out_masks)):
             cells[ci]['input_path'] = self.in_path
-            cells[ci]['output_path'] = self.out_path
+            cells[ci]['output_path'] = self.out_path_dir
+            cells[ci]['idx'] = ci
             cells[ci]['input_match_idx'] = self.matches_all[ci,self.IN]
             cells[ci]['match_perc_in'] = self.matches_all[ci,self.PERC_IN]
             cells[ci]['match_perc_out'] = self.matches_all[ci,self.PERC_OUT]
-            cells[ci]['C'] = self.out['C'][ci]
-            cells[ci]['deconv_f'] = self.deconv_f
+            cells[ci]['match_corrcoef'] = self.matches_all[ci,self.CORR]
+            cells[ci]['C'][:] = self.out['C'][ci]
+            cells[ci]['deconv_f'][:] = self.deconv_f
             cells[ci]['deconv_mean_psn'] = np.mean(self.deconv_psn)
             cells[ci]['sim_npil_mag'] = float(self.inn_params['neuropil_mag'])
             cells[ci]['sim_noise_g_std'] = float(self.inn_params['imaging_noise'][1])
             cells[ci]['sim_noise_sh_mag'] = float(self.inn_params['imaging_noise_mag'])
+            cells[ci]['sim_cell_timing_offset'] = float(self.inn_params['cell_timing_offset'][1])
             cells[ci]['sim_n_cells'] = int(self.inn_params['n_cells_in_fov'])
         return cells
 
@@ -192,7 +235,10 @@ class Result(object):
             perc_out = overlap(om, self.in_masks[in_match_idx], percent_of=1)
             perc_in = overlap(om, self.in_masks[in_match_idx], percent_of=2)
             dist = distance(om, self.in_masks[in_match_idx])
-            matches.append([oi, in_match_idx, perc_out, perc_in, dist])
+            inca = self.in_cells[in_match_idx]['ca']
+            outca = self.out['C'][oi]
+            cc = corr(inca,outca,method=np.corrcoef)
+            matches.append([oi, in_match_idx, perc_out, perc_in, dist, cc])
         return np.array(matches)
 
     def display_cells(self):
@@ -293,12 +339,12 @@ if __name__ == '__main__':
         data = np.load(pjoin(sim_dir,'comparison.npz'))
         inn,out = data['inn'],data['out']
         inn = inn[np.argsort(inn['input_path'])]
-        out = out[np.argsort(out['output_path'])]
+        out = out[np.argsort(out['input_path'])]
         
         figidx = int(sys.argv[2])
 
         if figidx == 1:
-            #batch3
+            #expression vs neuropil magnitude, splitting matches and non-matches
             unique_npil_mags = np.unique(inn['sim_npil_mag'])
             yes_idxs = [np.argwhere(np.logical_and(inn[:]['matched']==True, inn[:]['sim_npil_mag']==nm)) for nm in unique_npil_mags]
             no_idxs = [np.argwhere(np.logical_and(inn[:]['matched']==False, inn[:]['sim_npil_mag']==nm)) for nm in unique_npil_mags]
@@ -312,56 +358,122 @@ if __name__ == '__main__':
 
             pl.scatter(unique_npil_mags,no_means,marker='o',label='Unfound Cells', color='r', s=no_szs)
             pl.scatter(unique_npil_mags,yes_means,marker='o',label='Found Cells', color='g', s=yes_szs)
-            pl.errorbar(unique_npil_mags,no_means,yerr=no_sems,fmt=None,ecolor='k')
-            pl.errorbar(unique_npil_mags,yes_means,yerr=yes_sems,fmt=None,ecolor='k')
-            pl.legend(loc='upper left',numpoints=1)
+            #pl.errorbar(unique_npil_mags,no_means,yerr=no_sems,fmt=None,ecolor='k')
+            #pl.errorbar(unique_npil_mags,yes_means,yerr=yes_sems,fmt=None,ecolor='k')
+            #pl.legend(loc='upper left',numpoints=1)
             pl.xlabel('Neuropil Magnitude', fontsize=20)
             pl.ylabel('Cell Expression', fontsize=20)
 
         elif figidx == 2:
-            #batch3
-            idxs = np.argsort(inn['expression'])
+            #used when variable differs among cells
+            #variable value along bottom, pct matched along y
+            vname = 'expression'
+            if 'batch_5' in sim_dir or 'batch_6' in sim_dir:
+                vname = 'offset'
+            try:
+                thresh_expression, thresh_match = float(sys.argv[3]),float(sys.argv[4])
+            except:
+                print "figure x <expr_thresh> <match_thresh>"
+                sys.exit(0)
+            inn_filt = inn[np.argwhere(inn['expression']>thresh_expression)]
+            inn_matched = inn_filt['best_match_in_perc'] > thresh_match
+
+            idxs = np.squeeze(np.argsort(np.squeeze(inn_filt[vname])))
             bins = np.floor(np.linspace(0,len(idxs)+1,30))
             lims = [(i1,i2) for i1,i2 in zip(bins[:-1], bins[1:])]
-            expr = [np.mean(inn['expression'][idxs][i1:i2]) for i1,i2 in lims]
-            pct_matched = [np.mean(inn['matched'][idxs][i1:i2]) for i1,i2 in lims]
-            pl.scatter(expr, pct_matched)
-            pl.xlabel('Cell Expression', fontsize=20)
+            var_mags = [np.mean(inn_filt[vname][idxs][i1:i2]) for i1,i2 in lims]
+            pct_matched = [np.mean(inn_matched[idxs][i1:i2]) for i1,i2 in lims]
+            pl.scatter(var_mags, pct_matched)
+            pl.xlabel(vname, fontsize=20)
             pl.ylabel('Fraction of Cells Matched', fontsize=20)
         
         elif figidx == 3:
-            #batches 1,3,4
-            try:
-                op = sys.argv[3]
-            except:
-                print "Specify whether to plot pct matched (pct) or p.sn (psn)."
-                sys.exit(0)
-            if 'batch_2' in sim_dir:
-                vname = 'sim_noise_sh_mag'
-            elif 'batch_3' in sim_dir:
+            #used when variable does not differ among cells
+            #variable value along bottom, pct matched or other var along y
+            yvar = 'corrcoef' #pct or psn or corrcoef
+            if 'batch_3' in sim_dir:
                 vname = 'sim_npil_mag'
-            elif 'batch_4' in sim_dir:
+            if 'batch_4' in sim_dir:
                 vname = 'sim_noise_g_std'
+            elif 'batch_5' in sim_dir or 'batch_6' in sim_dir: 
+                vname = 'sim_cell_timing_offset'
+            elif 'batch_7' in sim_dir: 
+                vname = 'sim_n_cells'
+            try:
+                thresh_expression, thresh_match = float(sys.argv[3]),float(sys.argv[4])
+            except:
+                print "figure x <expr_thresh> <match_thresh>"
+                sys.exit(0)
             unique_var_mags = np.unique(inn[vname])
-            if op == 'pct':
-                outcome = [np.mean(inn['matched'][np.argwhere(inn[vname]==vm)]) for vm in unique_var_mags]
-            elif op == 'psn':
-                outcome = [np.mean(out['deconv_mean_psn'][np.argwhere(inn[vname]==vm)]) for vm in unique_var_mags]
+            inn_filt = inn[np.argwhere(inn['expression']>thresh_expression)]
+            inn_matched = inn_filt['best_match_in_perc'] > thresh_match
+            inn_matched_objs = inn_filt[inn_matched]
+            if yvar == 'corrcoef' or yvar == 'psn':
+                out_matches = []
+                for imo in inn_matched_objs:
+                    good = False
+                    for oo in out[np.argwhere(out['input_path']==imo['input_path'])]:
+                        if oo['input_path'] == imo['input_path'] and oo['idx'] == imo['best_match']:
+                            out_matches.append(oo)
+                            good = True
+                out_matches = np.concatenate(out_matches)
+
+
+            if yvar == 'pct':
+                outcome = [np.mean(inn_matched[np.argwhere(inn_filt[vname]==vm)]) for vm in unique_var_mags]
+            elif yvar == 'psn':
+                outcome = [np.mean(out_matches['deconv_mean_psn'][np.argwhere(out_matches[vname]==vm)]) for vm in unique_var_mags]
+            elif yvar == 'corrcoef':
+                outcome = [np.mean(out_matches['match_corrcoef'][np.argwhere(out_matches[vname]==vm)]) for vm in unique_var_mags]
             pl.scatter(unique_var_mags, outcome)
             pl.xlabel(vname, fontsize=20)
-            pl.ylabel(op, fontsize=20)
-       
-        elif figidx == 4:
-            try:
-                op = int(sys.argv[3])
-            except:
-                print "Specify: for cells with expression greater than __"
-                sys.exit(0)
-            unique_var_mags = np.unique(inn['sim_noise_g_std'])
-            outcome = [np.mean(inn['matched'][np.argwhere(np.logical_and(inn['sim_noise_g_std']==vm, inn['expression']>op))]) for vm in unique_var_mags]
-            pl.scatter(unique_var_mags, outcome)
-            pl.xlabel('Noise Magnitude', fontsize=20)
-            pl.ylabel('Fraction of Cells Matched', fontsize=20)
+            pl.ylabel(yvar, fontsize=20)
+
+    elif option == 'example':
+        #use batch 3
+        data = np.load(pjoin(sim_dir,'comparison.npz'))
+        inn,out = data['inn'],data['out']
+        inn = inn[np.argsort(inn['input_path'])]
+        out = out[np.argsort(out['input_path'])]
+
+        n = '01_007'
+        cidx = 21
+        rec_idx = np.argwhere([n==ip.split('/')[-2] for ip in inn['input_path']])[0]
+        rec = inn[rec_idx[0]]
+        res = Result(rec['input_path'], rec['output_path'])
+        mov = res.inn['movie'][0]['mov']
+
+        #pl.figure(1)
+        #zpro = np.std(mov, axis=0)
+        #pl.imshow(zpro, cmap=pl.cm.Greys_r)
+
+        #pl.figure(2)
+        #pl.imshow(res.get_inmask(), cmap=pl.cm.Greys_r)
+        #pl.figure(3)
+        #pl.imshow(res.get_outmask(), cmap=pl.cm.Greys_r)
+
+        pl.figure(4)
+        outcellidx = np.argwhere(out['input_match_idx']==cidx)[0]
+        outcell = out[outcellidx]
+        incell = inn[cidx]
+        t = res.inn['time']
+        inca = incell['f']
+        outca = outcell['C'][0]
+        pl.plot(t, normalize(inca))
+        pl.plot(t[1::2],normalize(outca)+1.1)
+        pl.savefig('cell21_ca.eps')
+        
+        pl.figure(5)
+        outcellidx = inn['best_match'][cidx]
+        outstim = res.deconv_matrix[outcellidx]
+        t = res.inn['time']
+        instim = res.inn['cells'][cidx]['stim']
+        pl.plot(t, normalize(instim))
+        pl.plot(t[1::2],normalize(outstim)+1.1)
+        pl.savefig('cell22_deconv.eps')
         
     elif option == 'play':
-        pass
+        data = np.load(pjoin(sim_dir,'comparison.npz'))
+        inn,out = data['inn'],data['out']
+        inn = inn[np.argsort(inn['input_path'])]
+        out = out[np.argsort(out['input_path'])]

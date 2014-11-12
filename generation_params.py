@@ -19,14 +19,17 @@ replicates = 3
 #batch4: (more)
 #values[0] = [[0.0,i] for i in values[0]] #comes after repeat
 
-#batch5:
-variables = ['cell_timing_offset']
-values = [np.linspace(0.0005,0.950)]
+#batch5,6:
+#variables = ['cell_timing_offset']
+#values = [np.linspace(0.0005,0.950)]
+#batch5 (more):
+#values[0] = [[0.050,i] for i in values[0]] #comes after repeat
+
+#batch7:
+variables = ['soma_density_field']
+values = [np.linspace(10,200,n_per_variable).astype(int)]
 
 values = [list(np.repeat(i,replicates)) for i in values]
-
-#batch5 (more):
-values[0] = [[0.050,i] for i in values[0]] #comes after repeat
 
 
 data = {}

@@ -3,3 +3,15 @@ batch_2: after fixing a few things, varied neuropil magnitude -- caused arpfit t
 batch_3: switched to gaussian noise, again varying neuropil magnitude
 batch_4: varied the level of gaussian noise
 batch_5: varied the timing
+batch_6: varied timing in the same way as 5, but changed soma_density_field from 45 to 100
+batch_7: varied cell number
+
+
+to make corrcoef plots:
+1. take all input cells, filter for expression >2
+2. filter these cells for only those matched, with >20% coverage overlap
+3. for each of these, if multiple output cells map onto it, choose one with
+highest power as the match
+4. with 1 to 1 pairs, calculate corrcoef
+5. show one dot for each condition along x axis, with the value being the mean
+of the corrcoefs for all cells in that condition that passed these tests
