@@ -135,6 +135,10 @@ class Result(object):
         return np.sum(self.in_masks, axis=0)
     def get_outmask(self):
         return np.sum(self.out_masks, axis=0)
+    def get_out_npil(self):
+        npil = self.out['b'].toarray()#.reshape(self.in_masks.shape[1:])
+        return np.array([np.min(npil), np.max(npil), np.mean(npil), np.std(npil)])
+
 
     def get_input_cell_summaries(self):
         cell_dtype = np.dtype([ ('input_path', 'a%i'%(len(self.in_path))),\
@@ -182,6 +186,7 @@ class Result(object):
                                 ('C', np.float32, self.out['C'].shape[1]),\
                                 ('deconv_f', np.float32, self.deconv_f.shape),\
                                 ('deconv_mean_psn', np.float32),\
+                                ('out_npil', np.float32, 4),\
                                 ('sim_npil_mag', np.float32),\
                                 ('sim_noise_g_std', np.float32),\
                                 ('sim_noise_sh_mag', np.float32),\
@@ -200,6 +205,7 @@ class Result(object):
             cells[ci]['C'][:] = self.out['C'][ci]
             cells[ci]['deconv_f'][:] = self.deconv_f
             cells[ci]['deconv_mean_psn'] = np.mean(self.deconv_psn)
+            cells[ci]['out_npil'][:] = self.get_out_npil()
             cells[ci]['sim_npil_mag'] = float(self.inn_params['neuropil_mag'])
             cells[ci]['sim_noise_g_std'] = float(self.inn_params['imaging_noise'][1])
             cells[ci]['sim_noise_sh_mag'] = float(self.inn_params['imaging_noise_mag'])
@@ -390,7 +396,7 @@ if __name__ == '__main__':
         elif figidx == 3:
             #used when variable does not differ among cells
             #variable value along bottom, pct matched or other var along y
-            yvar = 'corrcoef' #pct or psn or corrcoef
+            yvar = 'pct' #pct or psn or corrcoef or out_npil
             if 'batch_3' in sim_dir:
                 vname = 'sim_npil_mag'
             if 'batch_4' in sim_dir:
@@ -425,6 +431,13 @@ if __name__ == '__main__':
                 outcome = [np.mean(out_matches['deconv_mean_psn'][np.argwhere(out_matches[vname]==vm)]) for vm in unique_var_mags]
             elif yvar == 'corrcoef':
                 outcome = [np.mean(out_matches['match_corrcoef'][np.argwhere(out_matches[vname]==vm)]) for vm in unique_var_mags]
+            elif yvar == 'out_npil':
+                outcome_max = [np.mean(out['out_npil'][np.squeeze(np.argwhere(out[vname]==vm))][:,1]) for vm in unique_var_mags]
+                outcome_min = [np.mean(out['out_npil'][np.squeeze(np.argwhere(out[vname]==vm))][:,0]) for vm in unique_var_mags]
+                outcome_std = [np.mean(out['out_npil'][np.squeeze(np.argwhere(out[vname]==vm))][:,3]) for vm in unique_var_mags]
+                outcome_mean = [np.mean(out['out_npil'][np.squeeze(np.argwhere(out[vname]==vm))][:,2]) for vm in unique_var_mags]
+                #outcome = outcome_mean
+                outcome = [m-mm for m,mm in zip(outcome_max,outcome_min)]
             pl.scatter(unique_var_mags, outcome)
             pl.xlabel(vname, fontsize=20)
             pl.ylabel(yvar, fontsize=20)
