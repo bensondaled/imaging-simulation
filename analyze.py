@@ -390,7 +390,7 @@ if __name__ == '__main__':
         elif figidx == 3:
             #used when variable does not differ among cells
             #variable value along bottom, pct matched or other var along y
-            yvar = 'corrcoef' #pct or psn or corrcoef
+            yvar = 'pct' #pct or psn or corrcoef
             if 'batch_3' in sim_dir:
                 vname = 'sim_npil_mag'
             if 'batch_4' in sim_dir:
