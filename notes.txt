@@ -15,3 +15,14 @@ highest power as the match
 4. with 1 to 1 pairs, calculate corrcoef
 5. show one dot for each condition along x axis, with the value being the mean
 of the corrcoefs for all cells in that condition that passed these tests
+
+work flow for basic analysis, in case you forget:
+start by editing the analyze.py script to match everything you want. (ex batch
+near first line)
+then run python analyze.py count
+to see how many simulations are available given the batch you chose
+then submit job_analysis -tc 50 n where n is the number is just showed
+then let them finish, run manually if any stall by doing python analyze.py
+parse x where x are the stalled numbers
+then run python analyze.py merge to merge all the data just created
+then run your desired thing, ex. python analyze.py figure 3

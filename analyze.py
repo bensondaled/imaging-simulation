@@ -136,7 +136,7 @@ class Result(object):
     def get_outmask(self):
         return np.sum(self.out_masks, axis=0)
     def get_out_npil(self):
-        npil = self.out['b'].toarray()#.reshape(self.in_masks.shape[1:])
+        npil = self.out['f']#.toarray()#.reshape(self.in_masks.shape[1:])
         return np.array([np.min(npil), np.max(npil), np.mean(npil), np.std(npil)])
 
 
@@ -396,7 +396,7 @@ if __name__ == '__main__':
         elif figidx == 3:
             #used when variable does not differ among cells
             #variable value along bottom, pct matched or other var along y
-            yvar = 'pct' #pct or psn or corrcoef or out_npil
+            yvar = 'out_npil' #pct or psn or corrcoef or out_npil
             if 'batch_3' in sim_dir:
                 vname = 'sim_npil_mag'
             if 'batch_4' in sim_dir:
@@ -426,7 +426,7 @@ if __name__ == '__main__':
 
 
             if yvar == 'pct':
-                outcome = [np.mean(inn_matched[np.argwhere(inn_filt[vname]==vm)]) for vm in unique_var_mags]
+                outcome = [np.mean(inn_matched[inn_filt[vname]==vm]) for vm in unique_var_mags]
             elif yvar == 'psn':
                 outcome = [np.mean(out_matches['deconv_mean_psn'][np.argwhere(out_matches[vname]==vm)]) for vm in unique_var_mags]
             elif yvar == 'corrcoef':
@@ -436,7 +436,7 @@ if __name__ == '__main__':
                 outcome_min = [np.mean(out['out_npil'][np.squeeze(np.argwhere(out[vname]==vm))][:,0]) for vm in unique_var_mags]
                 outcome_std = [np.mean(out['out_npil'][np.squeeze(np.argwhere(out[vname]==vm))][:,3]) for vm in unique_var_mags]
                 outcome_mean = [np.mean(out['out_npil'][np.squeeze(np.argwhere(out[vname]==vm))][:,2]) for vm in unique_var_mags]
-                #outcome = outcome_mean
+                outcome = outcome_std
                 outcome = [m-mm for m,mm in zip(outcome_max,outcome_min)]
             pl.scatter(unique_var_mags, outcome)
             pl.xlabel(vname, fontsize=20)
@@ -490,3 +490,10 @@ if __name__ == '__main__':
         inn,out = data['inn'],data['out']
         inn = inn[np.argsort(inn['input_path'])]
         out = out[np.argsort(out['input_path'])]
+        #manual
+        inp = '/jukebox/wang/deverett/simulations/batch_5/01_030/01_030.npz'
+        outp = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/batch_5_ANALYZED/01_030/01_030/01'
+        res = Result(inp,outp)
+        m = res.matches_all[0]
+        pl.plot(normalize(res.inn['cells'][m[res.IN]]['ca'][::2]))
+        pl.plot(normalize(res.out['C'][m[res.OUT]]))
