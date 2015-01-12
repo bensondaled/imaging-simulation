@@ -57,7 +57,7 @@ class Simulation(object):
         self.imaging_noise_lam = 3.0 #if shot
         self.imaging_noise_mag = 1.05 #if shot, when movie is 0-1.0
         self.imaging_noise = [0.0, 0.2] #if gaussian, when movie is 0-1.0
-        self.imaging_filter_sigma = [0., 0.2, 0.2]
+        self.imaging_filter_sigma = [0., 0.2, 0.2] #this is in pixels
         self.noise_type = 'gauss' #shot or gauss
 
         # indicator
@@ -85,7 +85,7 @@ class Simulation(object):
         self.cell_f_strength = [0.0, 0.000001] #this is an additive offset for fluorescence, for instance, if a cell is just generally brighter because it's closer to the surface
         self.neuropil_mag = 1.0 #as a fraction of average cell magnitude
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
-        self.neuropil_expression = 2.0 #as a multiple of the "avg" (but not truly avg) cell_expression
+        self.neuropil_expression = 1.0 #2.0 #as a multiple of the "avg" (but not truly avg) cell_expression
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
         self.npil_ca_dist_noise = [-1, 2.5]
     @property
@@ -97,7 +97,7 @@ class Simulation(object):
         self.soma_density = self._soma_density_field / np.product(self.field_size_final) #cells/micrometer_squared
     def ca2f(self, ca):
         def response_curve(c): 
-            fmin = self.gcamp_rf / (self.gcamp_rf - 1)
+            fmin = 1.
             return fmin + self.gcamp_rf*(c**self.gcamp_nh)/(self.gcamp_kd + c**self.gcamp_nh)
         #convert a calcium concentration to an ideal fluorescence maximal value
         f = response_curve(ca)
