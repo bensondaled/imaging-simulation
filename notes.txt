@@ -5,6 +5,8 @@ batch_4: varied the level of gaussian noise
 batch_5: varied the timing
 batch_6: varied timing in the same way as 5, but changed soma_density_field from 45 to 100
 batch_7: varied cell number
+batch_8: just like 4, in that we varied gaussian noise, but with a tighter
+range of values, b/c noise went too high
 
 
 to make corrcoef plots:

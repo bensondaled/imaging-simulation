@@ -1,2 +1,3 @@
 rm -f job_generate.o*
 rm -f job_analysis.o*
+rm -f convert_ag.m*.o*

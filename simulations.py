@@ -45,7 +45,7 @@ class Simulation(object):
         self.soma_circularity_noise_world = [0., 0.15] #micrometers
         self.soma_circularity_noise = [ss/self.Ds for ss in self.soma_circularity_noise_world] #pixels
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
-        self.soma_density_field = 100 #cells per *final* frame area
+        self.soma_density_field = 45 #100 #cells per *final* frame area
         self.soma_clusters_density_field = 6 #*expected* cluster per *final* frame area
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
@@ -85,7 +85,7 @@ class Simulation(object):
         self.cell_f_strength = [0.0, 0.000001] #this is an additive offset for fluorescence, for instance, if a cell is just generally brighter because it's closer to the surface
         self.neuropil_mag = 1.0 #as a fraction of average cell magnitude
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
-        self.neuropil_expression = 1.0 #2.0 #as a multiple of the "avg" (but not truly avg) cell_expression
+        self.neuropil_expression = 2.0 #as a multiple of the "avg" (but not truly avg) cell_expression
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
         self.npil_ca_dist_noise = [-1, 2.5]
     @property

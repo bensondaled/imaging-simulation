@@ -90,8 +90,10 @@ class Result(object):
         self.in_path = in_path
         self.out_path_dir = out_path
         self.out_path = pjoin(self.out_path_dir,'resultsFactorizationWhole.mat')
+        self.out_path2 = pjoin(self.out_path_dir, 'movFinalNoObject.mat')
         
         self.out = loadmat(self.out_path)
+        self.out2 = loadmat(self.out_path2)
         self.inn = np.load(self.in_path)
 
         self.inn_params = np.atleast_1d(self.inn['params'])[0]
@@ -131,12 +133,30 @@ class Result(object):
         self.percent_in_cells_matched = float(self.n_in_cells_matched)/float(len(self.in_masks_infov))
         self.variances = [variance(self.out['C'][m[self.OUT]], self.in_cells[m[self.IN]]['ca']) for m in self.matches]
 
+
+        self.out_Yr = self.reshapeY(self.out2['mov'][0][0][0])
+        self.noise_mov = self.out_Yr - (self.out['b'].toarray()*self.out['f']) - (self.out['A'].toarray() .dot( self.out['C']))
+        self.noise_by_pixel = np.std(self.noise_mov, axis=1)
+        self.out_noise = [np.min(self.noise_by_pixel), np.max(self.noise_by_pixel), np.mean(self.noise_by_pixel), np.std(self.noise_by_pixel)]
+
+    def reshapeY(self, Y):
+        minn = np.min(Y)
+        maxx = np.max(Y)
+        d1,d2,T = Y.shape
+        d = d1*d2
+        Y = (Y-minn)/(maxx-minn)
+        Yr = np.reshape(Y, (d,T))
+        return Yr
+
     def get_inmask(self):
         return np.sum(self.in_masks, axis=0)
     def get_outmask(self):
         return np.sum(self.out_masks, axis=0)
     def get_out_npil(self):
         npil = self.out['f']#.toarray()#.reshape(self.in_masks.shape[1:])
+        return np.array([np.min(npil), np.max(npil), np.mean(npil), np.std(npil)])
+    def get_in_npil(self):
+        npil = self.inn['neuropil'][0]['fluo']
         return np.array([np.min(npil), np.max(npil), np.mean(npil), np.std(npil)])
 
 
@@ -156,6 +176,7 @@ class Result(object):
                                 ('sim_noise_sh_mag', np.float32),\
                                 ('sim_cell_timing_offset', np.float32),\
                                 ('sim_n_cells', np.int32),\
+                                ('in_npil', np.float32, 4),\
                               ])
         cells = np.zeros(len(self.inn['cells']), dtype=cell_dtype)
         for ci,c in enumerate(self.inn['cells']):
@@ -174,6 +195,7 @@ class Result(object):
             cells[ci]['sim_noise_sh_mag'] = float(self.inn_params['imaging_noise_mag'])
             cells[ci]['sim_cell_timing_offset'] = float(self.inn_params['cell_timing_offset'][1])
             cells[ci]['sim_n_cells'] = int(self.inn_params['n_cells_in_fov'])
+            cells[ci]['in_npil'][:] = self.get_in_npil()
         return cells
     def get_output_cell_summaries(self):
         cell_dtype = np.dtype([ ('input_path', 'a%i'%(len(self.in_path))),\
@@ -187,11 +209,13 @@ class Result(object):
                                 ('deconv_f', np.float32, self.deconv_f.shape),\
                                 ('deconv_mean_psn', np.float32),\
                                 ('out_npil', np.float32, 4),\
+                                ('in_npil', np.float32, 4),\
                                 ('sim_npil_mag', np.float32),\
                                 ('sim_noise_g_std', np.float32),\
                                 ('sim_noise_sh_mag', np.float32),\
                                 ('sim_cell_timing_offset', np.float32),\
                                 ('sim_n_cells', np.int32),\
+                                ('out_noise', np.float32, 4),\
                               ])
         cells = np.zeros(len(self.out_masks), dtype=cell_dtype)
         for ci in xrange(len(self.out_masks)):
@@ -206,11 +230,13 @@ class Result(object):
             cells[ci]['deconv_f'][:] = self.deconv_f
             cells[ci]['deconv_mean_psn'] = np.mean(self.deconv_psn)
             cells[ci]['out_npil'][:] = self.get_out_npil()
+            cells[ci]['in_npil'][:] = self.get_in_npil()
             cells[ci]['sim_npil_mag'] = float(self.inn_params['neuropil_mag'])
             cells[ci]['sim_noise_g_std'] = float(self.inn_params['imaging_noise'][1])
             cells[ci]['sim_noise_sh_mag'] = float(self.inn_params['imaging_noise_mag'])
             cells[ci]['sim_cell_timing_offset'] = float(self.inn_params['cell_timing_offset'][1])
             cells[ci]['sim_n_cells'] = int(self.inn_params['n_cells_in_fov'])
+            cells[ci]['out_noise'][:] = self.out_noise
         return cells
 
     def n_neighbors(self, c):
@@ -351,9 +377,10 @@ if __name__ == '__main__':
 
         if figidx == 1:
             #expression vs neuropil magnitude, splitting matches and non-matches
+            match_thresh = 0.2
             unique_npil_mags = np.unique(inn['sim_npil_mag'])
-            yes_idxs = [np.argwhere(np.logical_and(inn[:]['matched']==True, inn[:]['sim_npil_mag']==nm)) for nm in unique_npil_mags]
-            no_idxs = [np.argwhere(np.logical_and(inn[:]['matched']==False, inn[:]['sim_npil_mag']==nm)) for nm in unique_npil_mags]
+            yes_idxs = [np.argwhere(np.logical_and(inn[:]['best_match_in_perc']>=match_thresh, inn[:]['sim_npil_mag']==nm)) for nm in unique_npil_mags] #or ['matched']==True
+            no_idxs = [np.argwhere(np.logical_and(inn[:]['best_match_in_perc']<match_thresh, inn[:]['sim_npil_mag']==nm)) for nm in unique_npil_mags]
             yes_expr,no_expr = zip(*[[inn['expression'][yi],inn['expression'][ni]] for yi,ni in zip(yes_idxs,no_idxs)])
             yes_ns,no_ns = map(len,yes_expr),map(len,no_expr)
             yes_means,no_means = map(np.mean, yes_expr),map(np.mean, no_expr)
@@ -396,7 +423,7 @@ if __name__ == '__main__':
         elif figidx == 3:
             #used when variable does not differ among cells
             #variable value along bottom, pct matched or other var along y
-            yvar = 'out_npil' #pct or psn or corrcoef or out_npil
+            yvar = 'pct' #pct or psn or corrcoef or out_npil -- NOTE: IDREALLY USE FIGURE 4 FOR ANYTHING OTHER THAN PCT
             if 'batch_3' in sim_dir:
                 vname = 'sim_npil_mag'
             if 'batch_4' in sim_dir:
@@ -405,10 +432,12 @@ if __name__ == '__main__':
                 vname = 'sim_cell_timing_offset'
             elif 'batch_7' in sim_dir: 
                 vname = 'sim_n_cells'
+            elif 'batch_8' in sim_dir: 
+                vname = 'sim_noise_g_std'
             try:
                 thresh_expression, thresh_match = float(sys.argv[3]),float(sys.argv[4])
             except:
-                print "figure x <expr_thresh> <match_thresh>"
+                print "figure x <expr_thresh> <match_thresh>" #standard 4 0.2
                 sys.exit(0)
             unique_var_mags = np.unique(inn[vname])
             inn_filt = inn[np.argwhere(inn['expression']>thresh_expression)]
@@ -442,6 +471,37 @@ if __name__ == '__main__':
             pl.xlabel(vname, fontsize=20)
             pl.ylabel(yvar, fontsize=20)
 
+        elif figidx == 4:
+            #compare parameters of input and output, nothing at cell level
+            #currently demands that all the info, even input stuff, be in the out structure
+            #also currently highly specific to batch_3 neuropil vs noise stuff
+            mode = 'npil'
+            if mode == 'npil':
+                #xvar yvar can be in_npil, out_npil, sim_npil_mag
+                #adjust whether or not you want range or just value or whatever for each
+                xvar = 'sim_npil_mag' 
+                yvar = 'out_npil'
+                xvals = out[xvar]#[:,1]# - out[xvar][:,0] #2nd part for range
+                xvals,idxs = np.unique(xvals, return_index=True)
+                yvals = out[yvar][idxs][:,1] - out[yvar][idxs][:,0] #specific for npil rangeA
+                #yvals = out[yvar][idxs]
+
+                #y_normvar = 'deconv_mean_psn'
+                #x_normvar = 'sim_noise_g_std'
+                #ynorm = out[y_normvar][idxs].astype(float)
+                #xnorm = out[x_normvar][idxs].astype(float)
+                #assert np.all(np.sort(out[yvar][idxs][:,1])==np.sort(np.unique(out[yvar][:,1])))
+                pl.scatter(xvals, yvals) #/nxorm, /ynorm
+            elif mode == 'noise':
+                xvar = 'sim_noise_g_std'
+                yvar = 'deconv_mean_psn' #deconv_mean_psn or out_noise
+                xvals,idxs = np.unique(out[xvar], return_index=True)
+                yvals = out[yvar][idxs]#[:,2] #include last if out_nosie
+                pl.scatter(xvals, yvals)
+            pl.xlabel(xvar, fontsize=20)
+            pl.ylabel(yvar, fontsize=20)
+
+
     elif option == 'example':
         #use batch 3
         data = np.load(pjoin(sim_dir,'comparison.npz'))
@@ -466,7 +526,7 @@ if __name__ == '__main__':
         #pl.imshow(res.get_outmask(), cmap=pl.cm.Greys_r)
 
         pl.figure(4)
-        outcellidx = np.argwhere(out['input_match_idx']==cidx)[0]
+        outcellidx = np.argwhere(out['input_match_idx']==cidx)[1]
         outcell = out[outcellidx]
         incell = inn[cidx]
         t = res.inn['time']
@@ -491,9 +551,10 @@ if __name__ == '__main__':
         inn = inn[np.argsort(inn['input_path'])]
         out = out[np.argsort(out['input_path'])]
         #manual
-        inp = '/jukebox/wang/deverett/simulations/batch_5/01_030/01_030.npz'
-        outp = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/batch_5_ANALYZED/01_030/01_030/01'
+        inp = '/jukebox/wang/deverett/simulations/batch_4/01_015/01_015.npz'
+        outp = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/batch_4_ANALYZED/01_015/01_015/01'
+        #aleks examples done with batch4 01_015
         res = Result(inp,outp)
         m = res.matches_all[0]
-        pl.plot(normalize(res.inn['cells'][m[res.IN]]['ca'][::2]))
-        pl.plot(normalize(res.out['C'][m[res.OUT]]))
+        #pl.plot(normalize(res.inn['cells'][m[res.IN]]['ca'][::2]))
+        #pl.plot(normalize(res.out['C'][m[res.OUT]]))
