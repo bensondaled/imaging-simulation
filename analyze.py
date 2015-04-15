@@ -10,7 +10,7 @@ from scipy.io import savemat,loadmat
 rand = np.random
 pjoin = os.path.join
 
-batch = 3
+batch = 6
 sim_dir = '/jukebox/wang/deverett/simulations/batch_%i'%(batch)
 out_dir = '/jukebox/wang/abadura/FOR_PAPER_GRAN_CELL/simulations/AFTER_CLUSTER_AND_POSTPROCESSED/batch_%i_ANALYZED'%(batch)
 temp_dir = '/jukebox/wang/deverett/tmp'
@@ -90,10 +90,14 @@ class Result(object):
         self.in_path = in_path
         self.out_path_dir = out_path
         self.out_path = pjoin(self.out_path_dir,'resultsFactorizationWhole.mat')
-        self.out_path2 = pjoin(self.out_path_dir, 'movFinalNoObject.mat')
+        try:
+            self.out_path2 = pjoin(self.out_path_dir, 'movFinalNoObject.mat')
+            self.out2 = loadmat(self.out_path2)
+            loadedpath2 = True
+        except:
+            loadedpath2 = False
         
         self.out = loadmat(self.out_path)
-        self.out2 = loadmat(self.out_path2)
         self.inn = np.load(self.in_path)
 
         self.inn_params = np.atleast_1d(self.inn['params'])[0]
@@ -133,11 +137,14 @@ class Result(object):
         self.percent_in_cells_matched = float(self.n_in_cells_matched)/float(len(self.in_masks_infov))
         self.variances = [variance(self.out['C'][m[self.OUT]], self.in_cells[m[self.IN]]['ca']) for m in self.matches]
 
-
-        self.out_Yr = self.reshapeY(self.out2['mov'][0][0][0])
-        self.noise_mov = self.out_Yr - (self.out['b'].toarray()*self.out['f']) - (self.out['A'].toarray() .dot( self.out['C']))
-        self.noise_by_pixel = np.std(self.noise_mov, axis=1)
-        self.out_noise = [np.min(self.noise_by_pixel), np.max(self.noise_by_pixel), np.mean(self.noise_by_pixel), np.std(self.noise_by_pixel)]
+        if loadedpath2:
+            self.out_Yr = self.reshapeY(self.out2['mov'][0][0][0])
+            self.noise_mov = self.out_Yr - (self.out['b'].toarray()*self.out['f']) - (self.out['A'].toarray() .dot( self.out['C']))
+        if loadedpath2:
+            self.noise_by_pixel = np.std(self.noise_mov, axis=1)
+            self.out_noise = [np.min(self.noise_by_pixel), np.max(self.noise_by_pixel), np.mean(self.noise_by_pixel), np.std(self.noise_by_pixel)]
+        else:
+            self.out_noise = None
 
     def reshapeY(self, Y):
         minn = np.min(Y)
@@ -201,7 +208,7 @@ class Result(object):
         cell_dtype = np.dtype([ ('input_path', 'a%i'%(len(self.in_path))),\
                                 ('output_path', 'a%i'%(len(self.out_path_dir))),\
                                 ('idx', np.int32),\
-                                ('input_match_idx', np.int8),\
+                                ('input_match_idx', np.int64),\
                                 ('match_perc_in', np.float32),\
                                 ('match_perc_out', np.float32),\
                                 ('match_corrcoef', np.float32),\
@@ -500,6 +507,30 @@ if __name__ == '__main__':
                 pl.scatter(xvals, yvals)
             pl.xlabel(xvar, fontsize=20)
             pl.ylabel(yvar, fontsize=20)
+        
+        elif figidx == 5:
+            #used for batches 5,6 when timing was varied
+            #considers cell-to-cell comparisons, for example comparing peak time
+            thresh_match = 0.2
+            
+            inn_matched = inn[inn['best_match_in_perc']>thresh_match]
+            #inn_matched = inn_matched[inn_matched['expression']>6]
+            out_matches = []
+            for im in inn_matched:
+                done = False
+                for o in out[out['input_path']==im['input_path']]:
+                    if  o['idx']==im['best_match']:
+                        out_matches.append(o)
+                        done = True
+                        continue
+                if not done:
+                    out_matches.append(False)
+
+            in_ca = [i['f'][1::2] for i in inn_matched]
+            out_ca = [i['C'] for i in out_matches]
+
+            vals = [np.corrcoef(pair)[0,1] for pair in zip(in_ca,out_ca)]
+            pl.hist(vals)
 
 
     elif option == 'example':
