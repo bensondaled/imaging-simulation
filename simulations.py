@@ -42,10 +42,12 @@ class Simulation(object):
 
         # the biological tissue
         self.soma_radius = [3., 0.2] #micrometers
+        self.soma_radius_nucleusless = [0.75, 0.05] #as fraction of normal soma
+        self.p_nucleusless = 0.25 #probability of having no nucleus
         self.soma_circularity_noise_world = [0., 0.15] #micrometers
         self.soma_circularity_noise = [ss/self.Ds for ss in self.soma_circularity_noise_world] #pixels
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
-        self.soma_density_field = 45 #100 #cells per *final* frame area
+        self.soma_density_field = 80 #100 #cells per *final* frame area
         self.soma_clusters_density_field = 6 #*expected* cluster per *final* frame area
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
@@ -72,11 +74,10 @@ class Simulation(object):
         self.ca_per_ap = 0.010 #micromolar
         self.stim_onset = 0.5 #s
         self.stim_f = 200. #spikes/s
-        self.stim_dur = [0.100, 0.100] #s
-        self.stim_gap = 1.5 #s
-        self.stim_n = 30
-        self.stim_durs = np.array([self.stim_dur[0] for _ in xrange(self.stim_n)])#rand.normal(*self.stim_dur, size=self.stim_n) #this is for random durations
-        self.duration = (self.stim_onset + self.stim_gap) * self.stim_n + np.sum(self.stim_durs) #s
+        self.stim_durs = np.arange(0.005, 0.120, 0.005) #s
+        self.stim_gap = 2.0 #s
+        self.stim_n = len(self.stim_durs)
+        self.duration = (self.stim_onset + self.stim_gap) * (self.stim_n+1) + np.sum(self.stim_durs) #s
         self.cell_timing_offset = [0.050, 0.030] #seconds
         # these are working on values from 0-1:
         self.cell_magnitude = [1.0, 0.01] #magnitude of cells' *ca* response amplitudes relative to each other
@@ -98,7 +99,8 @@ class Simulation(object):
     def ca2f(self, ca):
         def response_curve(c): 
             fmin = 1.
-            return fmin + self.gcamp_rf*(c**self.gcamp_nh)/(self.gcamp_kd + c**self.gcamp_nh)
+            fmax = (self.gcamp_rf-1)*fmin #true 'fmax' per se is fmin plus this number
+            return fmin + fmax*(c**self.gcamp_nh)/(self.gcamp_kd + c**self.gcamp_nh)
         #convert a calcium concentration to an ideal fluorescence maximal value
         f = response_curve(ca)
         return f
@@ -109,20 +111,17 @@ class Simulation(object):
         t = self.t
         onsets = [(self.stim_onset+self.stim_gap)*i + np.sum(self.stim_durs[:i]) + self.stim_onset for i in xrange(self.stim_n)]
         onsets = [o + abs(shift) for o in onsets]
-        self.dur_idxs = np.round([sd/self.Ts for sd in self.stim_durs])
+        dur_idxs = np.ceil([sd/self.Ts for sd in self.stim_durs])
+        nspikes = self.stim_durs*self.stim_f
+        spikes_by_stim = [ns/di for ns,di in zip(nspikes,dur_idxs)]
 
         stim = np.zeros_like(t)
-        self.idxs_start = np.round(np.array(onsets)/self.Ts)
-        self.idxs_end = self.idxs_start + self.dur_idxs
-        if self.stim_f*self.Ts > 1.0: #more than one spike per sample
-            self.stim_f_use = 1/self.Ts
-            self.sps = self.stim_f/self.stim_f_use
-        else:
-            self.sps = 1.0
-            self.stim_f_use = self.stim_f
-        idxs = np.concatenate([np.arange(idx_start, idx_end, np.rint(1./(self.stim_f_use*self.Ts)), dtype=int) for idx_start,idx_end in zip(self.idxs_start, self.idxs_end)])
-        idxs = [i for i in idxs if i<len(stim)]
-        stim[idxs] = self.sps
+        idxs_start = np.round(np.array(onsets)/self.Ts)
+        idxs_end = idxs_start + dur_idxs 
+        for ixs, ixe, sp in zip(idxs_start, idxs_end, spikes_by_stim):
+            if ixe>len(stim):
+                ixe = len(stim)
+            stim[ixs:ixe] = sp
         return stim
 
     def generate_ca(self, stim, tau_decay, mag, bl):
@@ -174,8 +173,12 @@ class Simulation(object):
                     minx = round(minx)
                     maxx = round(maxx)
                 cell.center = [rand.randint(qmin,qmax) for qmin,qmax in [(miny,maxy),(minx,maxx)]]
-                cell.radius = rand.normal(*self.soma_radius)
-                cell.nuc_radius = min(self.nucleus_radius[0]*cell.radius, rand.normal(*(np.array(self.nucleus_radius)*cell.radius)))
+                if np.random.random()<self.p_nucleusless:
+                    cell.nuc_radius = 0.
+                    cell.radius = rand.normal(*(np.array(self.soma_radius_nucleusless)*np.array(self.soma_radius)))
+                else:
+                    cell.radius = rand.normal(*self.soma_radius)
+                    cell.nuc_radius = min(self.nucleus_radius[0]*cell.radius, rand.normal(*(np.array(self.nucleus_radius)*cell.radius)))
                 cell.mag = abs(rand.normal(*self.cell_magnitude))
                 cell.baseline = abs(rand.normal(*self.cell_baseline)) #will be the multiplying factor to the standard ca baseline
                 cell.tau_cdecay = max(1.e-10, rand.normal(*self.tau_ca_decay))
@@ -188,10 +191,14 @@ class Simulation(object):
         return cells
     def generate_neuropil(self):
         npil = Cell(self)
-        available_pts = np.argwhere(np.logical_not(np.sum([c.mask_with_nucleus for c in self.cells],axis=0)))
-        npil.mask = np.zeros(self.image_size, dtype=bool)
-        for ap in available_pts:
-            npil.mask[ap[0],ap[1]] = bool(rand.random()<self.neuropil_density)
+        # begin version before oct12:
+        # available_pts = np.argwhere(np.logical_not(np.sum([c.mask_with_nucleus for c in self.cells],axis=0)))
+        # npil.mask = np.zeros(self.image_size, dtype=bool)
+        # for ap in available_pts:
+        #    npil.mask[ap[0],ap[1]] = bool(rand.random()<self.neuropil_density)
+        # end version before oct 12, begin new version
+        npil.mask = np.random.random(self.image_size)<self.neuropil_density
+        # end new version
         idx0,idx1 = self.image_placement
         npil.mask_im = npil.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped
         npil.tau_cdecay = max(1.e-10,rand.normal(*self.tau_ca_decay))
@@ -280,7 +287,7 @@ class Simulation(object):
         stim = self.__dict__['stim']
         movie = np.array([{k:self.__dict__[k] for k in ['mov','mov_nofilter','mov_nojit','mov_filtered']}])
         if fmt in ['npy','npz','numpy','n']:
-            np.savez(fname, params=params, cells=cells, neuropil=npil, time=t, stim=stim, movie=movie)
+            np.savez_compressed(fname, params=params, cells=cells, neuropil=npil, time=t, stim=stim, movie=movie)
         elif fmt in ['mat','matlab','m']:
             matdic = {'params':params, 'cells':cells, 'neuropil':npil, 'time':t, 'stim':stim, 'movie':movie}
             savemat(fname, matdic)
@@ -383,7 +390,8 @@ class Cell(object):
         pos_array = np.rint(pos_array)
         self.mask = pos_array <= r*r
         self.mask_with_nucleus = np.copy(self.mask)
-        self.mask[pos_array <= nr*nr] = False
+        if nr > 0:
+            self.mask[pos_array <= nr*nr] = False
         
         idx0,idx1 = self.sim.image_placement
         self.mask_im = self.mask[idx0[0]:idx1[0], idx0[1]:idx1[1]] #mask once movie has been cropped

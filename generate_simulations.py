@@ -7,7 +7,7 @@ import os
 task_id = sys.argv[1]
 task_id = int(task_id)-1
 
-dest = '/jukebox/wang/deverett/simulations/batch_8'
+dest = '/jukebox/wang/deverett/simulations/batch_9'
 
 with open('generation_params.json','r') as f:
     params = json.loads(f.read())
@@ -27,4 +27,4 @@ setattr(sim,varr,val)
 sim.generate_movie()
 sim.save_mov(fmt='tif',dest=dest)
 sim.save_data(fmt='npy', dest=dest)
-sim.save_data(fmt='mat', dest=dest)
+#sim.save_data(fmt='mat', dest=dest)

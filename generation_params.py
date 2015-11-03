@@ -30,12 +30,15 @@ replicates = 3
 #values = [np.linspace(10,200,n_per_variable).astype(int)]
 
 #batch8:
-variables = ['imaging_noise']
-values = [np.linspace(0.001,0.5,n_per_variable)]
-values = [list(np.repeat(i,replicates)) for i in values]
+#variables = ['imaging_noise']
+#values = [np.linspace(0.001,0.5,n_per_variable)]
+#values = [list(np.repeat(i,replicates)) for i in values]
 #batch8: (more)
-values[0] = [[0.0,i] for i in values[0]] #comes after repeat
+#values[0] = [[0.0,i] for i in values[0]] #comes after repeat
 
+#batch9:
+variables = ['neuropil_mag']
+values = [list(np.linspace(0.01,2.2,n_per_variable))]
 
 data = {}
 data['variables'] = variables

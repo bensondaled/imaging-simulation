@@ -7,6 +7,8 @@ batch_6: varied timing in the same way as 5, but changed soma_density_field from
 batch_7: varied cell number
 batch_8: just like 4, in that we varied gaussian noise, but with a tighter
 range of values, b/c noise went too high
+batch_9: adjusted code in some ways after efytchios discussions. removed A&A
+neuropil-through-cells thing (it now comes through cells). varied neuropil
 
 
 to make corrcoef plots:
@@ -28,3 +30,8 @@ then let them finish, run manually if any stall by doing python analyze.py
 parse x where x are the stalled numbers
 then run python analyze.py merge to merge all the data just created
 then run your desired thing, ex. python analyze.py figure 3
+
+Oct 26:
+to compare ground truth to algorithm output:
+correlate the (flattened) input mask to output mask
+from sklearn.utils import linear_assignment_  (hungarian algorithm)
