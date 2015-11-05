@@ -21,9 +21,11 @@ class sNMF(object):
         self.update_spatial()
         self.update_temporal()
         self.merge()
+        self.update_spatial()
+        self.update_temporal()
         self.order()
 
-    def init_rois(self, n_components=100, show=False):
+    def init_rois(self, n_components=300, show=False):
         Ain,Cin,center = greedyROI2d(self.Y, nr=n_components, gSig=[2,2], gSiz=[6,6], use_median=False)
         Cn = np.mean(self.Y, axis=-1)
 
@@ -45,7 +47,7 @@ class sNMF(object):
         self.Yr,self.Cin,self.fin,self.Ain,self.P,self.Cn = Yr,Cin,fin,Ain,P,Cn
 
     def update_spatial(self):
-        self.A,self.b,self.Cin = update_spatial_components(self.Yr, self.Cin, self.fin, self.Ain, d1=self.Y.shape[0], d2=self.Y.shape[1], sn=self.P['sn'])
+        self.A,self.b,self.Cin = update_spatial_components(self.Yr, self.Cin, self.fin, self.Ain, d1=self.Y.shape[0], d2=self.Y.shape[1], sn=self.P['sn'], dist=2, max_size=6, min_size=3)
 
     def update_temporal(self):
         self.C,self.f,self.Y_res,self.Pnew = update_temporal_components(self.Yr,self.A,self.b,self.Cin,self.fin,ITER=2,deconv_method = 'spgl1')

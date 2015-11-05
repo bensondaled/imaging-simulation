@@ -38,7 +38,8 @@ replicates = 3
 
 #batch9:
 variables = ['neuropil_mag']
-values = [list(np.linspace(0.01,2.2,n_per_variable))]
+values = [np.linspace(0.01,2.2,n_per_variable)]
+values = [list(np.repeat(i,replicates)) for i in values]
 
 data = {}
 data['variables'] = variables

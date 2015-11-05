@@ -47,7 +47,7 @@ class Simulation(object):
         self.soma_circularity_noise_world = [0., 0.15] #micrometers
         self.soma_circularity_noise = [ss/self.Ds for ss in self.soma_circularity_noise_world] #pixels
         self.nucleus_radius = [0.45, 0.05] #as proportion of soma radius. in application, constrains std to only decrease but not increase size
-        self.soma_density_field = 80 #100 #cells per *final* frame area
+        self.soma_density_field = 199 #100 #cells per *final* frame area
         self.soma_clusters_density_field = 6 #*expected* cluster per *final* frame area
         self.soma_clusters_density = self.soma_clusters_density_field / np.product(self.field_size_final) #clusters/micrometer_squared
         self.soma_cluster_spread = [5., 10.] #distance from cluster center, as multiple of mean expected soma radius
@@ -58,9 +58,9 @@ class Simulation(object):
         self.imaging_background = 0.1
         self.imaging_noise_lam = 3.0 #if shot
         self.imaging_noise_mag = 1.05 #if shot, when movie is 0-1.0
-        self.imaging_noise = [0.0, 0.2] #if gaussian, when movie is 0-1.0
+        self.imaging_noise = [0.0, 0.05] #if gaussian, when movie is 0-1.0 # standard was 0,0.2 unless otherwise specified
         self.imaging_filter_sigma = [0., 0.2, 0.2] #this is in pixels
-        self.noise_type = 'gauss' #shot or gauss
+        self.noise_type = 'shot' #shot or gauss
 
         # indicator
         self.tau_gcamp_rise = 0.084 #s (58ms t1/2 rise dvidied by ln2)
@@ -82,11 +82,11 @@ class Simulation(object):
         # these are working on values from 0-1:
         self.cell_magnitude = [1.0, 0.01] #magnitude of cells' *ca* response amplitudes relative to each other
         self.cell_baseline = [1.0, 0.01] #magnitude of cells' *ca* baseline values relative to each other. This is a multiplier to the bseline Ca
-        self.cell_expression = [1.0, 5.00] #note that this refers to indicator while magnitude and baseline refer to calcium. it's the baseline *and* magnitude of a cell's fluorescent response relative to other cells (i.e. a multiplying factor for converting ca to f). interpreted as expression
+        self.cell_expression = [1.0, 1.00] #note that this refers to indicator while magnitude and baseline refer to calcium. it's the baseline *and* magnitude of a cell's fluorescent response relative to other cells (i.e. a multiplying factor for converting ca to f). interpreted as expression
         self.cell_f_strength = [0.0, 0.000001] #this is an additive offset for fluorescence, for instance, if a cell is just generally brighter because it's closer to the surface
-        self.neuropil_mag = 1.0 #as a fraction of average cell magnitude
+        self.neuropil_mag = 1.0 #as a fraction of average cell magnitude #was 1.0 unless otherwise specified
         self.neuropil_baseline = 0.9 #as a fraction of average cell baseline
-        self.neuropil_expression = 2.0 #as a multiple of the "avg" (but not truly avg) cell_expression
+        self.neuropil_expression = 0.5 #as a multiple of the "avg" (but not truly avg) cell_expression
         self.incell_ca_dist_noise = [-1, 0.1] #distribution of ca/fluo within cell, mean is mean of cell signal, 2nd value is fraction of that to make std
         self.npil_ca_dist_noise = [-1, 2.5]
     @property
