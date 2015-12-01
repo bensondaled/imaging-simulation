@@ -16,8 +16,8 @@ class sNMF(object):
         self.mov = mov
         self.Y = np.transpose(np.asarray(self.mov),(1,2,0))
 
-    def run(self):
-        self.init_rois()
+    def run(self, n_components=100):
+        self.init_rois(n_components=n_components)
         self.update_spatial()
         self.update_temporal()
         self.merge()
@@ -25,7 +25,7 @@ class sNMF(object):
         self.update_temporal()
         self.order()
 
-    def init_rois(self, n_components=300, show=False):
+    def init_rois(self, n_components=1000, show=False):
         Ain,Cin,center = greedyROI2d(self.Y, nr=n_components, gSig=[2,2], gSiz=[6,6], use_median=False)
         Cn = np.mean(self.Y, axis=-1)
 

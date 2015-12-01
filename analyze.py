@@ -1,6 +1,7 @@
 from structured_nmf import sNMF
 from sklearn.utils.linear_assignment_ import linear_assignment
 import tifffile
+import pyfluo as pf
 from matplotlib import colors
 
 path = '/jukebox/wang/deverett/simulations/batch_9/01_005/01_005'
@@ -8,7 +9,7 @@ path = 'example_output/example_output'
 mov = tifffile.imread(path+'.tif')
 
 snmf = sNMF(mov)
-snmf.run()
+snmf.run(n_components=500)
 
 with np.load(path+'.npz') as data:
     input_masks = np.array([c['mask_im'].flatten() for c in data['cells'] if c['was_in_fov']]) # nmasksxnpixels
