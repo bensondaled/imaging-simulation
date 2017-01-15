@@ -6,6 +6,7 @@ This goal of this project is to generate simulations of Ca imaging in granule ce
 File Index:
 
 **Simulation Generation**
+
     * simulations.py: the module storing the Simulation object, which generates the simulations
     
     * generation_params.py: a script used just before generating simulations, to specify the number of simulations to create and their parameters
@@ -19,8 +20,13 @@ File Index:
     * tifffile.pyc: a necessary module for saving tiffs
 
 **Results Analysis**
+
     * analyze.py: reads in simulation data & deconvolution results, and synthesizes them into simpler outputs. arguments:
+    
         'count': will display the number of available comparisons for parsing
+        
         'parse n': will run the comparison for the nth available file and save it in temp 
+        
         'merge': will merge the results of multiple parses located in temp
+        
     * job_analysis: a simple bash script to run analyze.py on the cluster
