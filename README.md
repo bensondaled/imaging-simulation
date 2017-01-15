@@ -7,10 +7,15 @@ File Index:
 
 **Simulation Generation**
     * simulations.py: the module storing the Simulation object, which generates the simulations
+    
     * generation_params.py: a script used just before generating simulations, to specify the number of simulations to create and their parameters
+    
     * generation_params.json: the result of running generation_params.py, containing parameters for generation
+    
     * generate_simulations.py: imports the necessary objects and parameters from simulations.py and generation_params.json, and creates the simulations
+    
     * job_generate: a simple bash script to run generate_simulations.py on the cluster
+    
     * tifffile.pyc: a necessary module for saving tiffs
 
 **Results Analysis**
